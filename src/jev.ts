@@ -128,11 +128,12 @@ export function readAnswers(response: unknown, ids: string[]): AskResult {
     const type = raw.type === "noul" || raw.type === "choice" || raw.type === "score" ? raw.type : null;
     const probabilities = record(raw.probabilities);
     const usable = Object.fromEntries(Object.entries(probabilities).filter((entry): entry is [string, number] => unit(entry[1]) !== null));
+    const ranked = Object.entries(usable).sort((a, b) => b[1] - a[1]).slice(0, 4);
     const answer: AskAnswer = {
       type,
       probability: type === "noul" ? unit(raw.noul) : null,
       choice: typeof raw.choice === "string" ? raw.choice : null,
-      probabilities: Object.keys(usable).length ? usable : null,
+      probabilities: ranked.length ? Object.fromEntries(ranked) : null,
       score: typeof raw.score === "number" && Number.isFinite(raw.score) ? raw.score : null,
       confidence: unit(raw.confidence),
     };

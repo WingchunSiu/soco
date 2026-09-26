@@ -34,6 +34,10 @@ export async function runHarness(options: {
       continue;
     }
     if (action.action === "final") {
+      if (mode === "jev" && runtime.calls === 0) {
+        messages.push({ role: "user", content: "Final is blocked until the code calls jev.ask, jev.locate, or jev.filter. Send source to Jev and print scores, not whole files." });
+        continue;
+      }
       const result = { status: "completed" as const, answer: action.answer, steps: step, rootUsage: usages, milliseconds: performance.now() - started };
       trace({ type: "run_end", ...result });
       return result;

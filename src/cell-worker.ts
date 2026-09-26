@@ -10,11 +10,19 @@ const rpc = (method: string, ...args: unknown[]) => new Promise((resolve, reject
   process.send?.({ type: "rpc", id, method, args });
 });
 let output = "", truncated = false;
+const budgetArg = process.argv.indexOf("--print-budget");
+const printBudget = budgetArg >= 0 ? Number(process.argv[budgetArg + 1]) : 12000;
+const clip = (value: string) => value.length > 1600 ? value.slice(0, 1600) + "…[truncated]" : value;
 const print = (...args: unknown[]) => {
-  const line = args.map(v => typeof v === "string" ? v : inspect(v, { depth: 6, maxArrayLength: 30, maxStringLength: 8000, customInspect: false, getters: false })).join(" ") + "\n";
+  if (output.length >= printBudget) {
+    if (!output.includes("print budget exhausted")) output += "print budget exhausted; print one cited line, not an index\n";
+    truncated = true;
+    return;
+  }
+  const line = args.map(v => clip(typeof v === "string" ? v : inspect(v, { depth: 5, maxArrayLength: 20, maxStringLength: 500, customInspect: false, getters: false }))).join(" ") + "\n";
   const room = 12000 - output.length;
   output += line.slice(0, Math.max(0, room));
-  if (line.length > room) truncated = true;
+  if (line.length > room || args.some(v => (typeof v === "string" ? v : inspect(v)).length > 500)) truncated = true;
 };
 const context = vm.createContext({
   state: {}, print, console: { log: print },

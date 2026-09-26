@@ -12,10 +12,12 @@ export class Runtime {
   private closed = false;
   private controller = new AbortController();
   private rpcCount = 0;
+  private jevCalls = 0;
+  get calls() { return this.jevCalls; }
   readonly metrics = { cells: 0, observationChars: 0 };
   constructor(private corpus: Corpus, private jev?: Jev, private timeout = 120000, private trace: Trace = () => {}) {
     integer(timeout, "cell timeout", 1, 600000);
-    this.child = fork(fileURLToPath(new URL("./cell-worker.js", import.meta.url)), jev ? [] : ["--read-only"], {
+    this.child = fork(fileURLToPath(new URL("./cell-worker.js", import.meta.url)), jev ? ["--print-budget", "2500"] : ["--read-only"], {
       execArgv: [], stdio: ["ignore", "ignore", "ignore", "ipc"],
       // Keys stay in the host process, never in the generated-code environment.
       env: { PATH: process.env.PATH ?? "" },
@@ -64,14 +66,17 @@ export class Runtime {
         case "jev.ask":
           if (!this.jev) throw new Error("Jev is disabled in the read baseline");
           value = await this.jev.ask(args[0], args[1], this.controller.signal);
+          this.jevCalls++;
           break;
         case "jev.filter":
           if (!this.jev) throw new Error("Jev is disabled in the read baseline");
           value = await this.jev.filter(args[0] as Ref[], args[1], args[2], this.controller.signal);
+          this.jevCalls++;
           break;
         case "jev.locate":
           if (!this.jev) throw new Error("Jev is disabled in the read baseline");
           value = await this.jev.locate(args[0], args[1], this.controller.signal);
+          this.jevCalls++;
           break;
         default: throw new Error("Unknown operation");
       }

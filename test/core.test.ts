@@ -186,7 +186,8 @@ test("output truncation explicit; asynchronous hang terminates session", async (
   const runtime = new Runtime(f.corpus, undefined, 200);
   try {
     const big = await runtime.eval('print("x".repeat(20000));');
-    assert.equal(big.output.length, 12000);
+    assert.equal(big.output.trim().length, 1612);
+    assert.match(big.output, /truncated/);
     assert.equal(big.truncated, true);
     const hung = await runtime.eval('await new Promise(() => {});');
     assert.match(hung.error!, /timed out/);
