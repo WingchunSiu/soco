@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "description": "System One context offloading: a root model investigates through code while Jev judges source that stays outside its context",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "tsc",
     "check": "tsc --noEmit",
@@ -13,6 +15,12 @@
     "jev": "node dist/src/cli.js",
     "start": "node dist/src/cli.js run"
   },
-  "dependencies": { "@mariozechner/pi-ai": "0.73.1", "dotenv": "17.2.3" },
-  "devDependencies": { "typescript": "5.9.3", "@types/node": "22.15.30" }
+  "dependencies": {
+    "@mariozechner/pi-ai": "0.73.1",
+    "dotenv": "17.2.3",
+    "typescript": "^5.9.3"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.30"
+  }
 }

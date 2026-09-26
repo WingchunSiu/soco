@@ -1,0 +1,1986 @@
+{
+  "title": "SOCO · Investigate through semantic computation",
+  "kind": "Recorded real API run on an authored development fixture",
+  "run": "dispatch-jev-5.json",
+  "trace": "dispatch-jev-5.jsonl",
+  "harnessHash": "b9caae66778954fb92b2db0bcd22812a432147c5281ff65a0a084ca73e059daf",
+  "task": "Investigate why the Dispatch service can acknowledge success before its audit event is durable. Identify all affected handlers and explain each mechanism from original evidence. Handlers with no audit action are outside scope. Distinguish safe counterexamples. This is an authored, read-only fixture, not a reproduced incident.\n\nPrimitive contracts: appendCommitted resolves only after durable storage and rejects on failure; appendCommittedSync returns only after durable storage and throws on failure; commitOutbox atomically commits all events durably before resolving. Returning a successful response or calling response.send makes it observable immediately; later awaits cannot retract it. Process termination loses memory, microtasks, and timers. Business primitives updateEntity/charge/render/query do not record audit events.\n\nEnvironment input is ALREADY LOADED: state.records maps all 20 handler paths to COMPLETE source text, including imports. state.refs maps each path to versioned block references. state.contracts is the full contracts.ts text. This is input preparation, not model analysis. Do not rediscover or print inventories, symbols, lengths, or all handler bodies.\n\nUse this semantic-computation protocol:\n1. Your FIRST code action should use jev.map(state.records, genericQuestions, state.contracts). Write one or two generic questions to identify audit-relevant handlers and missing helper context. Map applies each question to EACH record. Print a compact ID/probability table, not full result objects. Keep null/unknown explicit.\n2. Select candidates using the results. In code, follow their actual imports and load needed helper definitions with repo tools into external state. Do not print the helper bodies yet. Missing helper behavior remains unresolved regardless of a high score. Keep ordinary search/read available for recovery.\n3. Use a SECOND semantic pass to judge early acknowledgement with that context. Use jev.map(selectedRecords, {early:{type:'noul',instructions:'<your complete generic criterion for this handler>'}}, helperContext). Shared helpers/contracts go in the THIRD argument, never as extra records to classify. You may instead compose per-record context bundles. Print compact decisions only.\n4. Based on those results, print NUMBERED original source chains for suspected problems and plausible safe counterexamples. Read to resolve a concrete question; avoid rereading every irrelevant record. Distinguish what was loaded into state from what you actually saw printed. Budget is 14,000 printed characters total; use about 2,000 for screening/routing and reserve the rest for decisive evidence. Stop retrying output that cannot fit.\n5. Deliver JSON: findings:[{path,mechanism,evidence:['path:start-end',...]}], ruled_out:[{path,why}], limitations:[...]. Cite actual numbered lines, never estimated offsets. Root makes the final assessment. Explicitly state unresolved evidence.\n\nThe choice of questions, candidate selection, dependency composition, second-pass judgments, source review and final answer are yours. The host only preloads input, binds questions and packs API requests.",
+  "provider": "xai",
+  "model": "grok-4.7",
+  "jevModels": [
+    "jev-1.13.0"
+  ],
+  "status": "completed",
+  "profile": "input-preloaded; instructed semantic investigation",
+  "sources": {
+    "README.md": {
+      "text": "# Dispatch service\n\nThis is an authored, read-only investigation fixture. No infrastructure runs here.\nEach exported function under handlers/ is an independent HTTP handler.\nHandlers return response objects, except files.ts, which uses a response sender.\nAudit helper implementations live under services/.\nThe external storage and response primitives are specified in contracts.ts.\nA process may terminate at any instruction; in-memory work and timers are lost.\nA successful HTTP response is observable when a handler returns it or calls response.send().\nOnly a durable audit record (including an audit record in a committed outbox) satisfies the audit requirement.\n",
+      "sha256": "7bc254b76ed4e872e60b08ca2a71fa2725290e4ded31e13d678d0de7726ba621",
+      "lines": 10
+    },
+    "contracts.ts": {
+      "text": "export type Event = { kind: string; id: string };\nexport type Request = { id: string; user: string; body: string };\nexport type Reply = { status: number; body: unknown };\n// Resolves only after the event is on durable storage; rejects on failure.\nexport declare function appendCommitted(event: Event): Promise<void>;\n// Returns only after the event is on durable storage; throws on failure.\nexport declare function appendCommittedSync(event: Event): void;\n// Commits all events atomically to durable storage before resolving.\nexport declare function commitOutbox(events: Event[]): Promise<void>;\nexport declare function updateEntity(id: string, body: string): Promise<void>;\nexport declare function charge(id: string): Promise<void>;\nexport declare function render(id: string): Promise<string>;\nexport declare function query(term: string): Promise<string[]>;\n// send immediately makes the response observable; later awaits cannot retract it.\nexport type Response = { send(reply: Reply): void };\n",
+      "sha256": "6635d4b5152e14241099a574ff3b895791648d152f8fb794c4578a32d7d511fd",
+      "lines": 15
+    },
+    "services/journal.ts": {
+      "text": "import { appendCommitted, appendCommittedSync, type Event } from '../contracts';\nexport async function record(event: Event): Promise<void> {\n  await appendCommitted(event);\n}\nexport function recordSync(event: Event): void {\n  appendCommittedSync(event);\n}\n",
+      "sha256": "87f12c224570209585ff75a2c7397ba1b33494cd22b4fe4cbbed45b596915bdb",
+      "lines": 7
+    },
+    "services/bus.ts": {
+      "text": "import { type Event } from '../contracts';\nimport { record } from './journal';\nconst pending: Event[] = [];\nexport async function publish(event: Event): Promise<void> {\n  pending.push(event);\n}\nexport async function drain(): Promise<void> {\n  while (pending.length) {\n    const event = pending[0];\n    await record(event);\n    pending.shift();\n  }\n}\n",
+      "sha256": "bc734da1640daf70e456b3b66e00e2acae6e898168ae5db626a01b1dda520d86",
+      "lines": 13
+    },
+    "services/recovery.ts": {
+      "text": "import { type Event } from '../contracts';\nimport { record } from './journal';\nconst retryBuffer = new Map<string, Event>();\nexport async function submit(event: Event): Promise<void> {\n  retryBuffer.set(event.id, event);\n  queueMicrotask(() => { void flush().catch(() => {}); });\n}\nexport async function flush(): Promise<void> {\n  for (const [id, event] of retryBuffer) {\n    await record(event);\n    retryBuffer.delete(id);\n  }\n}\n",
+      "sha256": "39d8dde54ce57cfa0e95acd5441c3075d6cd28e7458bfc9df2df0a0ebe0dd84e",
+      "lines": 13
+    },
+    "services/scheduler.ts": {
+      "text": "import { type Event } from '../contracts';\nimport { record } from './journal';\nexport async function schedule(event: Event): Promise<void> {\n  setTimeout(() => { void record(event).catch(() => {}); }, 250);\n}\n",
+      "sha256": "e65222516166eb76fab4b7873b55ae3b590b2aceb8210b1afbb6d18a555956f3",
+      "lines": 5
+    },
+    "services/dispatch.ts": {
+      "text": "import { type Event } from '../contracts';\nimport { record } from './journal';\nexport async function deliver(event: Event): Promise<{ receipt: string }> {\n  await record(event);\n  return { receipt: event.id };\n}\n",
+      "sha256": "3fdd546716c9765da219f5431027e0206354402cb26277fc6db0b97bdc3e8ee4",
+      "lines": 6
+    },
+    "services/optional.ts": {
+      "text": "import { type Event } from '../contracts';\nimport { record } from './journal';\nexport async function attempt(event: Event): Promise<void> {\n  try {\n    await record(event);\n  } catch {\n    return;\n  }\n}\n",
+      "sha256": "9503422b68a46192fa434b6fd8c5df1f045b7ad37574a52ecb44582789d7c1d6",
+      "lines": 9
+    },
+    "services/retry.ts": {
+      "text": "import { type Event } from '../contracts';\nimport { record } from './journal';\nexport async function withRetry(event: Event): Promise<void> {\n  try {\n    await record(event);\n  } catch {\n    await record(event);\n  }\n}\n",
+      "sha256": "444c5d3f20ddb8a63640008c6446b39dfe79b8a0e5483b41f7540fa4df4e5be2",
+      "lines": 9
+    },
+    "services/outbox.ts": {
+      "text": "import { commitOutbox, type Event } from '../contracts';\nexport async function enqueue(event: Event): Promise<void> {\n  await commitOutbox([event]);\n}\n",
+      "sha256": "f5d63e55601b76d42cfe20866418798de9fe78ea05794337387f54b07add7ddb",
+      "lines": 4
+    },
+    "handlers/orders.ts": {
+      "text": "import { updateEntity, type Request } from '../contracts';\nimport { publish } from '../services/bus';\nexport async function orders(req: Request) {\n  await updateEntity(req.id, req.body);\n  await publish({ kind: 'order.updated', id: req.id });\n  return { status: 202, body: { accepted: req.id } };\n}\n",
+      "sha256": "6042fcf892171fec02c6ba5e04e02a5e0cb44cc4bdb089404531a36bf7a9e732",
+      "lines": 7
+    },
+    "handlers/refunds.ts": {
+      "text": "import { charge, type Request } from '../contracts';\nimport { submit } from '../services/recovery';\nexport async function refunds(req: Request) {\n  await charge(req.id);\n  await submit({ kind: 'refund.requested', id: req.id });\n  return { status: 202, body: { refund: req.id } };\n}\n",
+      "sha256": "70e65ca3907117c391725257c2495d421b96417de4f4ec7f1cb027f7be57c98b",
+      "lines": 7
+    },
+    "handlers/exports.ts": {
+      "text": "import { render, type Request } from '../contracts';\nimport { schedule } from '../services/scheduler';\nexport async function exports(req: Request) {\n  const document = await render(req.id);\n  await schedule({ kind: 'export.created', id: req.id });\n  return { status: 200, body: document };\n}\n",
+      "sha256": "bfdb0f44c073bbba6d63387a0b138bdc39f31048ff75c327db3add7afe793652",
+      "lines": 7
+    },
+    "handlers/webhook.ts": {
+      "text": "import { type Request } from '../contracts';\nimport { record } from '../services/journal';\nexport async function webhook(req: Request) {\n  void record({ kind: 'webhook.received', id: req.id });\n  return { status: 202, body: 'received' };\n}\n",
+      "sha256": "82d4d44ac96300f1f629e78b360accbdac36ffc7eabd7196a0905d35919ec994",
+      "lines": 6
+    },
+    "handlers/preferences.ts": {
+      "text": "import { updateEntity, type Request } from '../contracts';\nimport { attempt } from '../services/optional';\nexport async function preferences(req: Request) {\n  await updateEntity(req.user, req.body);\n  await attempt({ kind: 'preferences.changed', id: req.id });\n  return { status: 200, body: 'saved' };\n}\n",
+      "sha256": "2a3b6303b7e54e4fd6becbec1aeae3ded94624c600f8f88d6eafef7217e2cf78",
+      "lines": 7
+    },
+    "handlers/files.ts": {
+      "text": "import { render, type Request, type Response } from '../contracts';\nimport { record } from '../services/journal';\nexport async function files(req: Request, response: Response) {\n  const content = await render(req.id);\n  response.send({ status: 200, body: content });\n  await record({ kind: 'file.downloaded', id: req.id });\n}\n",
+      "sha256": "02a5022f8a09edaaf30b2d033b2c161650220124fc01e14f74d53c913d414d27",
+      "lines": 7
+    },
+    "handlers/profile.ts": {
+      "text": "import { updateEntity, type Request } from '../contracts';\nimport { record } from '../services/journal';\nexport async function profile(req: Request) {\n  await updateEntity(req.user, req.body);\n  await record({ kind: 'profile.changed', id: req.id });\n  return { status: 200, body: 'updated' };\n}\n",
+      "sha256": "34509817668016b3b9304bf48c5af0c39d46b51a9fff34fb9ac3bbf93e789648",
+      "lines": 7
+    },
+    "handlers/billing.ts": {
+      "text": "import { charge, type Request } from '../contracts';\nimport { record } from '../services/journal';\nexport async function billing(req: Request) {\n  await Promise.all([charge(req.id), record({ kind: 'invoice.charged', id: req.id })]);\n  return { status: 201, body: { invoice: req.id } };\n}\n",
+      "sha256": "b739dbdb7cbf773d1a90ad586ea78e10d8748f9d3ad66d42fdcc7b4e86c20139",
+      "lines": 6
+    },
+    "handlers/delivery.ts": {
+      "text": "import { type Request } from '../contracts';\nimport { deliver } from '../services/dispatch';\nexport async function delivery(req: Request) {\n  const receipt = await deliver({ kind: 'delivery.booked', id: req.id });\n  return { status: 202, body: receipt };\n}\n",
+      "sha256": "8bbca836b96aabe4849e96e40c2ec57ae4884ae2cdd8f6895ca7d0af242e6974",
+      "lines": 6
+    },
+    "handlers/sessions.ts": {
+      "text": "import { type Request } from '../contracts';\nimport { recordSync } from '../services/journal';\nexport function sessions(req: Request) {\n  recordSync({ kind: 'session.created', id: req.id });\n  return { status: 201, body: { session: req.id } };\n}\n",
+      "sha256": "55fd0bdf4f255f5666bef17c33d20c947d74850baa5ca42f2b8baf2559475f11",
+      "lines": 6
+    },
+    "handlers/enrollment.ts": {
+      "text": "import { type Request } from '../contracts';\nimport { withRetry } from '../services/retry';\nexport async function enrollment(req: Request) {\n  await withRetry({ kind: 'member.enrolled', id: req.id });\n  return { status: 201, body: req.user };\n}\n",
+      "sha256": "47abd72a87e52e7255c70a4b656675579317801c4af4b84383109fc291ad7436",
+      "lines": 6
+    },
+    "handlers/retention.ts": {
+      "text": "import { type Request } from '../contracts';\nimport { enqueue } from '../services/outbox';\nexport async function retention(req: Request) {\n  await enqueue({ kind: 'retention.requested', id: req.id });\n  return { status: 202, body: 'queued' };\n}\n",
+      "sha256": "a1ebc5b23ec1969f1978df77cf2745a8e814c57889776b7acda0d217f1b593bf",
+      "lines": 6
+    },
+    "handlers/health.ts": {
+      "text": "export function health() {\n  return { status: 200, body: { healthy: true } };\n}\n",
+      "sha256": "b39e37a8447586408256696465d5b1b78081483f8cefe2272d893be97ed9c345",
+      "lines": 3
+    },
+    "handlers/metrics.ts": {
+      "text": "const counters = new Map<string, number>();\nexport function metrics() {\n  return { status: 200, body: Object.fromEntries(counters) };\n}\n",
+      "sha256": "a9b9e741fd77217daeb75b90b27ed18bd258a87cea59dda591a070e701f22990",
+      "lines": 4
+    },
+    "handlers/catalog.ts": {
+      "text": "import { query, type Request } from '../contracts';\nexport async function catalog(req: Request) {\n  return { status: 200, body: await query(req.body) };\n}\n",
+      "sha256": "e03cae6c8afcfef650e29cf5e54084c2eabafe1e1aac7f9043109b0188e52633",
+      "lines": 4
+    },
+    "handlers/preview.ts": {
+      "text": "import { render, type Request } from '../contracts';\nexport async function preview(req: Request) {\n  const html = await render(req.id);\n  return { status: 200, body: html };\n}\n",
+      "sha256": "51a6ce6ccabcb4da96baf1087df655e9b76cc5c5c08ae1b2f93d268abd698e4a",
+      "lines": 5
+    },
+    "handlers/search.ts": {
+      "text": "import { query, type Request } from '../contracts';\nexport async function search(req: Request) {\n  const results = await query(req.body.trim());\n  return { status: 200, body: results.slice(0, 10) };\n}\n",
+      "sha256": "348ecfad8d7846652e3a63535842fed66e700b471b39bc6b096919399f234aaa",
+      "lines": 5
+    },
+    "handlers/locale.ts": {
+      "text": "import { type Request } from '../contracts';\nexport function locale(req: Request) {\n  const locale = req.body === 'fr' ? 'fr-FR' : 'en-US';\n  return { status: 200, body: { locale } };\n}\n",
+      "sha256": "ad309eade9fd326ea984c5746389434493c24ac9eaee16065b5b8f5d4d94e5c9",
+      "lines": 5
+    },
+    "handlers/assets.ts": {
+      "text": "const assets: Record<string, string> = { logo: '/static/logo.svg' };\nexport function assetsIndex() {\n  return { status: 200, body: assets };\n}\n",
+      "sha256": "cf3d60b8cbfe562c61817c505692e9de5eea10ede7a21aab50ebbab2a67acc19",
+      "lines": 4
+    },
+    "handlers/version.ts": {
+      "text": "export function version() {\n  return { status: 200, body: { version: '2.4.0', protocol: 3 } };\n}\n",
+      "sha256": "44d3b65afb91f2105bb9c3bf33574694eb3f17af2b750896400c496069ff5ac8",
+      "lines": 3
+    }
+  },
+  "turns": [
+    {
+      "step": 1,
+      "time": "2026-09-26T09:09:21.531Z",
+      "action": "code",
+      "code": "state.pass1 = await jev.map(state.records, {\n  auditRelevant: {\n    type: \"noul\",\n    instructions: \"For this handler record, using the shared contracts, does the handler attempt to record an audit event? Count direct calls to appendCommitted, appendCommittedSync, or commitOutbox, and also indirect audit recording via an imported helper whose name or call-site comments indicate audit/outbox persistence. Business primitives updateEntity, charge, render, and query do not record audit events. Handlers with no audit action are not audit-relevant. Answer yes only if an audit action is present or clearly delegated.\"\n  },\n  missingHelper: {\n    type: \"noul\",\n    instructions: \"For this handler record, using the shared contracts, is the relative order of a successful observable response and durable audit storage impossible to decide from this file alone because the audit write, the response, or both are delegated to an imported helper whose function body is not in this record? Answer yes if a missing helper definition is required. Answer no if the handler has no audit action, or if both the response and the audit durability are fully visible in this record plus the contracts.\"\n  }\n}, state.contracts);\nstate.pass1Table = Object.entries(state.pass1.items).map(([id, r]) => ({\n  id,\n  status: r.status,\n  audit: r.answers.auditRelevant ? r.answers.auditRelevant.probability : null,\n  missing: r.answers.missingHelper ? r.answers.missingHelper.probability : null\n}));\nprint(state.pass1Table);\nprint({unknown: state.pass1.unknown, errors: state.pass1.errors, requests: state.pass1.requests});",
+      "answer": "",
+      "output": "[{\"id\":\"handlers/assets.ts\",\"status\":\"completed\",\"audit\":0.03,\"missing\":0.27},{\"id\":\"handlers/billing.ts\",\"status\":\"completed\",\"audit\":0.9,\"missing\":0.69},{\"id\":\"handlers/catalog.ts\",\"status\":\"completed\",\"audit\":0.05,\"missing\":0.51},{\"id\":\"handlers/delivery.ts\",\"status\":\"completed\",\"audit\":0.5,\"missing\":0.85},{\"id\":\"handlers/enrollment.ts\",\"status\":\"completed\",\"audit\":0.76,\"missing\":0.83},{\"id\":\"handlers/exports.ts\",\"status\":\"completed\",\"audit\":0.61,\"missing\":0.77},{\"id\":\"handlers/files.ts\",\"status\":\"completed\",\"audit\":0.79,\"missing\":0.52},{\"id\":\"handlers/health.ts\",\"status\":\"completed\",\"audit\":0.04,\"missing\":0.32},{\"id\":\"handlers/locale.ts\",\"status\":\"completed\",\"audit\":0.04,\"missing\":0.33},{\"id\":\"handlers/metrics.ts\",\"status\":\"completed\",\"audit\":0.04,\"missing\":0.31},{\"id\":\"handlers/orders.ts\",\"status\":\"completed\",\"audit\":0.75,\"missing\":0.83},{\"id\":\"handlers/preferences.ts\",\"status\":\"completed\",\"audit\":0.5,\"missing\":0.88},{\"id\":\"handlers/preview.ts\",\"status\":\"completed\",\"audit\":0.04,\"missing\":0.57},{\"id\":\"handlers/profile.ts\",\"status\":\"completed\",\"audit\":0.83,\"missing\":0.87},{\"id\":\"handlers/refunds.ts\",\"status\":\"completed\",\"audit\":0.66,\"missing\":0.83},{\"id\":\"handlers/retention.ts\",\"status\":\"completed\",\"audit\":0.91,\"missing\":0.89},{\"id\":\"handlers/search.ts\",\"status\":\"completed\",\"audit\":0.04,\"missing\":0.45},{\"id\":\"handlers/sessions.ts\",\"status\":\"completed\",\"audit\":0.93,\"missing\":0.55},{\"id\":\"handlers/version.ts\",\"status\":\"completed\",\"audit\":0.04,\"missing\":0.28},{\"id\":\"handlers/webhook.ts\",\"status\":\"completed\",\"audit\":0.9,\"missing\":0.85}]\n{\"unknown\":[],\"errors\":[],\"requests\":3}\n",
+      "operations": [
+        {
+          "method": "jev.map"
+        }
+      ],
+      "maps": [
+        {
+          "questions": {
+            "auditRelevant": {
+              "type": "noul",
+              "instructions": "For this handler record, using the shared contracts, does the handler attempt to record an audit event? Count direct calls to appendCommitted, appendCommittedSync, or commitOutbox, and also indirect audit recording via an imported helper whose name or call-site comments indicate audit/outbox persistence. Business primitives updateEntity, charge, render, and query do not record audit events. Handlers with no audit action are not audit-relevant. Answer yes only if an audit action is present or clearly delegated."
+            },
+            "missingHelper": {
+              "type": "noul",
+              "instructions": "For this handler record, using the shared contracts, is the relative order of a successful observable response and durable audit storage impossible to decide from this file alone because the audit write, the response, or both are delegated to an imported helper whose function body is not in this record? Answer yes if a missing helper definition is required. Answer no if the handler has no audit action, or if both the response and the audit durability are fully visible in this record plus the contracts."
+            }
+          },
+          "batches": 3,
+          "records": [
+            {
+              "id": "handlers/assets.ts",
+              "material": "const assets: Record<string, string> = { logo: '/static/logo.svg' };\nexport function assetsIndex() {\n  return { status: 200, body: assets };\n}\n"
+            },
+            {
+              "id": "handlers/billing.ts",
+              "material": "import { charge, type Request } from '../contracts';\nimport { record } from '../services/journal';\nexport async function billing(req: Request) {\n  await Promise.all([charge(req.id), record({ kind: 'invoice.charged', id: req.id })]);\n  return { status: 201, body: { invoice: req.id } };\n}\n"
+            },
+            {
+              "id": "handlers/catalog.ts",
+              "material": "import { query, type Request } from '../contracts';\nexport async function catalog(req: Request) {\n  return { status: 200, body: await query(req.body) };\n}\n"
+            },
+            {
+              "id": "handlers/delivery.ts",
+              "material": "import { type Request } from '../contracts';\nimport { deliver } from '../services/dispatch';\nexport async function delivery(req: Request) {\n  const receipt = await deliver({ kind: 'delivery.booked', id: req.id });\n  return { status: 202, body: receipt };\n}\n"
+            },
+            {
+              "id": "handlers/enrollment.ts",
+              "material": "import { type Request } from '../contracts';\nimport { withRetry } from '../services/retry';\nexport async function enrollment(req: Request) {\n  await withRetry({ kind: 'member.enrolled', id: req.id });\n  return { status: 201, body: req.user };\n}\n"
+            },
+            {
+              "id": "handlers/exports.ts",
+              "material": "import { render, type Request } from '../contracts';\nimport { schedule } from '../services/scheduler';\nexport async function exports(req: Request) {\n  const document = await render(req.id);\n  await schedule({ kind: 'export.created', id: req.id });\n  return { status: 200, body: document };\n}\n"
+            },
+            {
+              "id": "handlers/files.ts",
+              "material": "import { render, type Request, type Response } from '../contracts';\nimport { record } from '../services/journal';\nexport async function files(req: Request, response: Response) {\n  const content = await render(req.id);\n  response.send({ status: 200, body: content });\n  await record({ kind: 'file.downloaded', id: req.id });\n}\n"
+            },
+            {
+              "id": "handlers/health.ts",
+              "material": "export function health() {\n  return { status: 200, body: { healthy: true } };\n}\n"
+            },
+            {
+              "id": "handlers/locale.ts",
+              "material": "import { type Request } from '../contracts';\nexport function locale(req: Request) {\n  const locale = req.body === 'fr' ? 'fr-FR' : 'en-US';\n  return { status: 200, body: { locale } };\n}\n"
+            },
+            {
+              "id": "handlers/metrics.ts",
+              "material": "const counters = new Map<string, number>();\nexport function metrics() {\n  return { status: 200, body: Object.fromEntries(counters) };\n}\n"
+            },
+            {
+              "id": "handlers/orders.ts",
+              "material": "import { updateEntity, type Request } from '../contracts';\nimport { publish } from '../services/bus';\nexport async function orders(req: Request) {\n  await updateEntity(req.id, req.body);\n  await publish({ kind: 'order.updated', id: req.id });\n  return { status: 202, body: { accepted: req.id } };\n}\n"
+            },
+            {
+              "id": "handlers/preferences.ts",
+              "material": "import { updateEntity, type Request } from '../contracts';\nimport { attempt } from '../services/optional';\nexport async function preferences(req: Request) {\n  await updateEntity(req.user, req.body);\n  await attempt({ kind: 'preferences.changed', id: req.id });\n  return { status: 200, body: 'saved' };\n}\n"
+            },
+            {
+              "id": "handlers/preview.ts",
+              "material": "import { render, type Request } from '../contracts';\nexport async function preview(req: Request) {\n  const html = await render(req.id);\n  return { status: 200, body: html };\n}\n"
+            },
+            {
+              "id": "handlers/profile.ts",
+              "material": "import { updateEntity, type Request } from '../contracts';\nimport { record } from '../services/journal';\nexport async function profile(req: Request) {\n  await updateEntity(req.user, req.body);\n  await record({ kind: 'profile.changed', id: req.id });\n  return { status: 200, body: 'updated' };\n}\n"
+            },
+            {
+              "id": "handlers/refunds.ts",
+              "material": "import { charge, type Request } from '../contracts';\nimport { submit } from '../services/recovery';\nexport async function refunds(req: Request) {\n  await charge(req.id);\n  await submit({ kind: 'refund.requested', id: req.id });\n  return { status: 202, body: { refund: req.id } };\n}\n"
+            },
+            {
+              "id": "handlers/retention.ts",
+              "material": "import { type Request } from '../contracts';\nimport { enqueue } from '../services/outbox';\nexport async function retention(req: Request) {\n  await enqueue({ kind: 'retention.requested', id: req.id });\n  return { status: 202, body: 'queued' };\n}\n"
+            },
+            {
+              "id": "handlers/search.ts",
+              "material": "import { query, type Request } from '../contracts';\nexport async function search(req: Request) {\n  const results = await query(req.body.trim());\n  return { status: 200, body: results.slice(0, 10) };\n}\n"
+            },
+            {
+              "id": "handlers/sessions.ts",
+              "material": "import { type Request } from '../contracts';\nimport { recordSync } from '../services/journal';\nexport function sessions(req: Request) {\n  recordSync({ kind: 'session.created', id: req.id });\n  return { status: 201, body: { session: req.id } };\n}\n"
+            },
+            {
+              "id": "handlers/version.ts",
+              "material": "export function version() {\n  return { status: 200, body: { version: '2.4.0', protocol: 3 } };\n}\n"
+            },
+            {
+              "id": "handlers/webhook.ts",
+              "material": "import { type Request } from '../contracts';\nimport { record } from '../services/journal';\nexport async function webhook(req: Request) {\n  void record({ kind: 'webhook.received', id: req.id });\n  return { status: 202, body: 'received' };\n}\n"
+            }
+          ],
+          "context": "export type Event = { kind: string; id: string };\nexport type Request = { id: string; user: string; body: string };\nexport type Reply = { status: number; body: unknown };\n// Resolves only after the event is on durable storage; rejects on failure.\nexport declare function appendCommitted(event: Event): Promise<void>;\n// Returns only after the event is on durable storage; throws on failure.\nexport declare function appendCommittedSync(event: Event): void;\n// Commits all events atomically to durable storage before resolving.\nexport declare function commitOutbox(events: Event[]): Promise<void>;\nexport declare function updateEntity(id: string, body: string): Promise<void>;\nexport declare function charge(id: string): Promise<void>;\nexport declare function render(id: string): Promise<string>;\nexport declare function query(term: string): Promise<string[]>;\n// send immediately makes the response observable; later awaits cannot retract it.\nexport type Response = { send(reply: Reply): void };\n",
+          "result": {
+            "items": {
+              "handlers/assets.ts": {
+                "answers": {
+                  "auditRelevant": {
+                    "type": "noul",
+                    "probability": 0.03,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  },
+                  "missingHelper": {
+                    "type": "noul",
+                    "probability": 0.27,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  }
+                },
+                "unknown": [],
+                "completenessGuaranteed": false,
+                "status": "completed"
+              },
+              "handlers/billing.ts": {
+                "answers": {
+                  "auditRelevant": {
+                    "type": "noul",
+                    "probability": 0.9,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  },
+                  "missingHelper": {
+                    "type": "noul",
+                    "probability": 0.69,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  }
+                },
+                "unknown": [],
+                "completenessGuaranteed": false,
+                "status": "completed"
+              },
+              "handlers/catalog.ts": {
+                "answers": {
+                  "auditRelevant": {
+                    "type": "noul",
+                    "probability": 0.05,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  },
+                  "missingHelper": {
+                    "type": "noul",
+                    "probability": 0.51,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  }
+                },
+                "unknown": [],
+                "completenessGuaranteed": false,
+                "status": "completed"
+              },
+              "handlers/delivery.ts": {
+                "answers": {
+                  "auditRelevant": {
+                    "type": "noul",
+                    "probability": 0.5,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  },
+                  "missingHelper": {
+                    "type": "noul",
+                    "probability": 0.85,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  }
+                },
+                "unknown": [],
+                "completenessGuaranteed": false,
+                "status": "completed"
+              },
+              "handlers/enrollment.ts": {
+                "answers": {
+                  "auditRelevant": {
+                    "type": "noul",
+                    "probability": 0.76,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  },
+                  "missingHelper": {
+                    "type": "noul",
+                    "probability": 0.83,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  }
+                },
+                "unknown": [],
+                "completenessGuaranteed": false,
+                "status": "completed"
+              },
+              "handlers/exports.ts": {
+                "answers": {
+                  "auditRelevant": {
+                    "type": "noul",
+                    "probability": 0.61,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  },
+                  "missingHelper": {
+                    "type": "noul",
+                    "probability": 0.77,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  }
+                },
+                "unknown": [],
+                "completenessGuaranteed": false,
+                "status": "completed"
+              },
+              "handlers/files.ts": {
+                "answers": {
+                  "auditRelevant": {
+                    "type": "noul",
+                    "probability": 0.79,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  },
+                  "missingHelper": {
+                    "type": "noul",
+                    "probability": 0.52,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  }
+                },
+                "unknown": [],
+                "completenessGuaranteed": false,
+                "status": "completed"
+              },
+              "handlers/health.ts": {
+                "answers": {
+                  "auditRelevant": {
+                    "type": "noul",
+                    "probability": 0.04,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  },
+                  "missingHelper": {
+                    "type": "noul",
+                    "probability": 0.32,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  }
+                },
+                "unknown": [],
+                "completenessGuaranteed": false,
+                "status": "completed"
+              },
+              "handlers/locale.ts": {
+                "answers": {
+                  "auditRelevant": {
+                    "type": "noul",
+                    "probability": 0.04,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  },
+                  "missingHelper": {
+                    "type": "noul",
+                    "probability": 0.33,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  }
+                },
+                "unknown": [],
+                "completenessGuaranteed": false,
+                "status": "completed"
+              },
+              "handlers/metrics.ts": {
+                "answers": {
+                  "auditRelevant": {
+                    "type": "noul",
+                    "probability": 0.04,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  },
+                  "missingHelper": {
+                    "type": "noul",
+                    "probability": 0.31,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  }
+                },
+                "unknown": [],
+                "completenessGuaranteed": false,
+                "status": "completed"
+              },
+              "handlers/orders.ts": {
+                "answers": {
+                  "auditRelevant": {
+                    "type": "noul",
+                    "probability": 0.75,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  },
+                  "missingHelper": {
+                    "type": "noul",
+                    "probability": 0.83,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  }
+                },
+                "unknown": [],
+                "completenessGuaranteed": false,
+                "status": "completed"
+              },
+              "handlers/preferences.ts": {
+                "answers": {
+                  "auditRelevant": {
+                    "type": "noul",
+                    "probability": 0.5,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  },
+                  "missingHelper": {
+                    "type": "noul",
+                    "probability": 0.88,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  }
+                },
+                "unknown": [],
+                "completenessGuaranteed": false,
+                "status": "completed"
+              },
+              "handlers/preview.ts": {
+                "answers": {
+                  "auditRelevant": {
+                    "type": "noul",
+                    "probability": 0.04,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  },
+                  "missingHelper": {
+                    "type": "noul",
+                    "probability": 0.57,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  }
+                },
+                "unknown": [],
+                "completenessGuaranteed": false,
+                "status": "completed"
+              },
+              "handlers/profile.ts": {
+                "answers": {
+                  "auditRelevant": {
+                    "type": "noul",
+                    "probability": 0.83,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  },
+                  "missingHelper": {
+                    "type": "noul",
+                    "probability": 0.87,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  }
+                },
+                "unknown": [],
+                "completenessGuaranteed": false,
+                "status": "completed"
+              },
+              "handlers/refunds.ts": {
+                "answers": {
+                  "auditRelevant": {
+                    "type": "noul",
+                    "probability": 0.66,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  },
+                  "missingHelper": {
+                    "type": "noul",
+                    "probability": 0.83,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  }
+                },
+                "unknown": [],
+                "completenessGuaranteed": false,
+                "status": "completed"
+              },
+              "handlers/retention.ts": {
+                "answers": {
+                  "auditRelevant": {
+                    "type": "noul",
+                    "probability": 0.91,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  },
+                  "missingHelper": {
+                    "type": "noul",
+                    "probability": 0.89,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  }
+                },
+                "unknown": [],
+                "completenessGuaranteed": false,
+                "status": "completed"
+              },
+              "handlers/search.ts": {
+                "answers": {
+                  "auditRelevant": {
+                    "type": "noul",
+                    "probability": 0.04,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  },
+                  "missingHelper": {
+                    "type": "noul",
+                    "probability": 0.45,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  }
+                },
+                "unknown": [],
+                "completenessGuaranteed": false,
+                "status": "completed"
+              },
+              "handlers/sessions.ts": {
+                "answers": {
+                  "auditRelevant": {
+                    "type": "noul",
+                    "probability": 0.93,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  },
+                  "missingHelper": {
+                    "type": "noul",
+                    "probability": 0.55,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  }
+                },
+                "unknown": [],
+                "completenessGuaranteed": false,
+                "status": "completed"
+              },
+              "handlers/version.ts": {
+                "answers": {
+                  "auditRelevant": {
+                    "type": "noul",
+                    "probability": 0.04,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  },
+                  "missingHelper": {
+                    "type": "noul",
+                    "probability": 0.28,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  }
+                },
+                "unknown": [],
+                "completenessGuaranteed": false,
+                "status": "completed"
+              },
+              "handlers/webhook.ts": {
+                "answers": {
+                  "auditRelevant": {
+                    "type": "noul",
+                    "probability": 0.9,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  },
+                  "missingHelper": {
+                    "type": "noul",
+                    "probability": 0.85,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  }
+                },
+                "unknown": [],
+                "completenessGuaranteed": false,
+                "status": "completed"
+              }
+            },
+            "unknown": [],
+            "requests": 3,
+            "errors": [],
+            "completenessGuaranteed": false
+          }
+        }
+      ],
+      "usage": {
+        "input": 2622,
+        "output": 398,
+        "cacheRead": 1152,
+        "cacheWrite": 0,
+        "totalTokens": 4172,
+        "cost": {
+          "input": 0.0052439999999999995,
+          "output": 0.002388,
+          "cacheRead": 0.000576,
+          "cacheWrite": 0,
+          "total": 0.008208
+        },
+        "provider": "xai",
+        "model": "grok-4.7",
+        "stopReason": "stop"
+      },
+      "errors": [],
+      "loaded": [],
+      "executedCode": "state.pass1 = await jev.map(state.records, {\n  auditRelevant: {\n    type: \"noul\",\n    instructions: \"For this handler record, using the shared contracts, does the handler attempt to record an audit event? Count direct calls to appendCommitted, appendCommittedSync, or commitOutbox, and also indirect audit recording via an imported helper whose name or call-site comments indicate audit/outbox persistence. Business primitives updateEntity, charge, render, and query do not record audit events. Handlers with no audit action are not audit-relevant. Answer yes only if an audit action is present or clearly delegated.\"\n  },\n  missingHelper: {\n    type: \"noul\",\n    instructions: \"For this handler record, using the shared contracts, is the relative order of a successful observable response and durable audit storage impossible to decide from this file alone because the audit write, the response, or both are delegated to an imported helper whose function body is not in this record? Answer yes if a missing helper definition is required. Answer no if the handler has no audit action, or if both the response and the audit durability are fully visible in this record plus the contracts.\"\n  }\n}, state.contracts);\nstate.pass1Table = Object.entries(state.pass1.items).map(([id, r]) => ({\n  id,\n  status: r.status,\n  audit: r.answers.auditRelevant ? r.answers.auditRelevant.probability : null,\n  missing: r.answers.missingHelper ? r.answers.missingHelper.probability : null\n}));\nprint(state.pass1Table);\nprint({unknown: state.pass1.unknown, errors: state.pass1.errors, requests: state.pass1.requests});",
+      "budget": {
+        "total": 14000,
+        "used": 1602,
+        "remaining": 12398,
+        "cellRemaining": 4398,
+        "rejectedChars": 0
+      },
+      "exposedLines": []
+    },
+    {
+      "step": 2,
+      "time": "2026-09-26T09:09:25.445Z",
+      "action": "code",
+      "code": "state.candidates = state.pass1Table.filter(r => r.audit >= 0.4).map(r => r.id);\nprint(state.candidates);\nstate.imports = {};\nfor (const id of state.candidates) {\n  const text = state.records[id];\n  const lines = text.split(/\\n/);\n  state.imports[id] = lines\n    .map((text, i) => ({line: i + 1, text}))\n    .filter(l => /^\\s*import\\b/.test(l.text) || /from\\s+['\\\"]/.test(l.text))\n    .map(l => l.text);\n}\nprint(state.imports);",
+      "answer": "",
+      "output": "[\"handlers/billing.ts\",\"handlers/delivery.ts\",\"handlers/enrollment.ts\",\"handlers/exports.ts\",\"handlers/files.ts\",\"handlers/orders.ts\",\"handlers/preferences.ts\",\"handlers/profile.ts\",\"handlers/refunds.ts\",\"handlers/retention.ts\",\"handlers/sessions.ts\",\"handlers/webhook.ts\"]\n{\"handlers/billing.ts\":[\"import { charge, type Request } from '../contracts';\",\"import { record } from '../services/journal';\"],\"handlers/delivery.ts\":[\"import { type Request } from '../contracts';\",\"import { deliver } from '../services/dispatch';\"],\"handlers/enrollment.ts\":[\"import { type Request } from '../contracts';\",\"import { withRetry } from '../services/retry';\"],\"handlers/exports.ts\":[\"import { render, type Request } from '../contracts';\",\"import { schedule } from '../services/scheduler';\"],\"handlers/files.ts\":[\"import { render, type Request, type Response } from '../contracts';\",\"import { record } from '../services/journal';\"],\"handlers/orders.ts\":[\"import { updateEntity, type Request } from '../contracts';\",\"import { publish } from '../services/bus';\"],\"handlers/preferences.ts\":[\"import { updateEntity, type Request } from '../contracts';\",\"import { attempt } from '../services/optional';\"],\"handlers/profile.ts\":[\"import { updateEntity, type Request } from '../contracts';\",\"import { record } from '../services/journal';\"],\"handlers/refunds.ts\":[\"import { charge, type Request } from '../contracts';\",\"import { submit } from '../services/recovery';\"],\"handlers/retention.ts\":[\"import { type Request } from '../contracts';\",\"import { enqueue } from '../services/outbox';\"],\"handlers/sessions.ts\":[\"import { type Request } from '../contracts';\",\"import { recordSync } from '../services/journal';\"],\"handlers/webhook.ts\":[\"import { type Request } from '../contracts';\",\"import { record } from '../services/journal';\"]}\n",
+      "operations": [],
+      "maps": [],
+      "usage": {
+        "input": 3572,
+        "output": 174,
+        "cacheRead": 1152,
+        "cacheWrite": 0,
+        "totalTokens": 4898,
+        "cost": {
+          "input": 0.007143999999999999,
+          "output": 0.001044,
+          "cacheRead": 0.000576,
+          "cacheWrite": 0,
+          "total": 0.008764
+        },
+        "provider": "xai",
+        "model": "grok-4.7",
+        "stopReason": "stop"
+      },
+      "errors": [],
+      "loaded": [],
+      "executedCode": "state.candidates = state.pass1Table.filter(r => r.audit >= 0.4).map(r => r.id);\nprint(state.candidates);\nstate.imports = {};\nfor (const id of state.candidates) {\n  const text = state.records[id];\n  const lines = text.split(/\\n/);\n  state.imports[id] = lines\n    .map((text, i) => ({line: i + 1, text}))\n    .filter(l => /^\\s*import\\b/.test(l.text) || /from\\s+['\\\"]/.test(l.text))\n    .map(l => l.text);\n}\nprint(state.imports);",
+      "budget": {
+        "total": 14000,
+        "used": 3414,
+        "remaining": 10586,
+        "cellRemaining": 4188,
+        "rejectedChars": 0
+      },
+      "exposedLines": []
+    },
+    {
+      "step": 3,
+      "time": "2026-09-26T09:09:28.984Z",
+      "action": "code",
+      "code": "state.svcFiles = await repo.files(\"services\");\nprint(state.svcFiles);\nstate.svcSymbols = await repo.symbols(\"services\");\nprint(state.svcSymbols.map(s => ({id:s.id, path:s.path, start:s.start, end:s.end, label:s.label, kind:s.kind})));",
+      "answer": "",
+      "output": "[\"services/bus.ts\",\"services/dispatch.ts\",\"services/journal.ts\",\"services/optional.ts\",\"services/outbox.ts\",\"services/recovery.ts\",\"services/retry.ts\",\"services/scheduler.ts\"]\n[{\"id\":\"services/bus.ts:3\",\"path\":\"services/bus.ts\",\"start\":3,\"end\":3,\"label\":\"pending\",\"kind\":\"FirstStatement\"},{\"id\":\"services/bus.ts:4\",\"path\":\"services/bus.ts\",\"start\":4,\"end\":6,\"label\":\"publish\",\"kind\":\"FunctionDeclaration\"},{\"id\":\"services/bus.ts:7\",\"path\":\"services/bus.ts\",\"start\":7,\"end\":13,\"label\":\"drain\",\"kind\":\"FunctionDeclaration\"},{\"id\":\"services/dispatch.ts:3\",\"path\":\"services/dispatch.ts\",\"start\":3,\"end\":6,\"label\":\"deliver\",\"kind\":\"FunctionDeclaration\"},{\"id\":\"services/journal.ts:2\",\"path\":\"services/journal.ts\",\"start\":2,\"end\":4,\"label\":\"record\",\"kind\":\"FunctionDeclaration\"},{\"id\":\"services/journal.ts:5\",\"path\":\"services/journal.ts\",\"start\":5,\"end\":7,\"label\":\"recordSync\",\"kind\":\"FunctionDeclaration\"},{\"id\":\"services/optional.ts:3\",\"path\":\"services/optional.ts\",\"start\":3,\"end\":9,\"label\":\"attempt\",\"kind\":\"FunctionDeclaration\"},{\"id\":\"services/outbox.ts:2\",\"path\":\"services/outbox.ts\",\"start\":2,\"end\":4,\"label\":\"enqueue\",\"kind\":\"FunctionDeclaration\"},{\"id\":\"services/recovery.ts:3\",\"path\":\"services/recovery.ts\",\"start\":3,\"end\":3,\"label\":\"retryBuffer\",\"kind\":\"FirstStatement\"},{\"id\":\"services/recovery.ts:4\",\"path\":\"services/recovery.ts\",\"start\":4,\"end\":7,\"label\":\"submit\",\"kind\":\"FunctionDeclaration\"},{\"id\":\"services/recovery.ts:8\",\"path\":\"services/recovery.ts\",\"start\":8,\"end\":13,\"label\":\"flush\",\"kind\":\"FunctionDeclaration\"},{\"id\":\"services/retry.ts:3\",\"path\":\"services/retry.ts\",\"start\":3,\"end\":9,\"label\":\"withRetry\",\"kind\":\"FunctionDeclaration\"},{\"id\":\"services/scheduler.ts:3\",\"path\":\"services/scheduler.ts\",\"start\":3,\"end\":5,\"label\":\"schedule\",\"kind\":\"FunctionDeclaration\"}]\n",
+      "operations": [
+        {
+          "method": "repo.files",
+          "args": [
+            "services"
+          ]
+        },
+        {
+          "method": "repo.symbols",
+          "args": [
+            "services"
+          ]
+        }
+      ],
+      "maps": [],
+      "usage": {
+        "input": 794,
+        "output": 91,
+        "cacheRead": 4608,
+        "cacheWrite": 0,
+        "totalTokens": 5493,
+        "cost": {
+          "input": 0.001588,
+          "output": 0.000546,
+          "cacheRead": 0.002304,
+          "cacheWrite": 0,
+          "total": 0.004438
+        },
+        "provider": "xai",
+        "model": "grok-4.7",
+        "stopReason": "stop"
+      },
+      "errors": [],
+      "loaded": [],
+      "executedCode": "state.svcFiles = await repo.files(\"services\");\nprint(state.svcFiles);\nstate.svcSymbols = await repo.symbols(\"services\");\nprint(state.svcSymbols.map(s => ({id:s.id, path:s.path, start:s.start, end:s.end, label:s.label, kind:s.kind})));",
+      "budget": {
+        "total": 14000,
+        "used": 5197,
+        "remaining": 8803,
+        "cellRemaining": 4217,
+        "rejectedChars": 0
+      },
+      "exposedLines": []
+    },
+    {
+      "step": 4,
+      "time": "2026-09-26T09:09:32.864Z",
+      "action": "code",
+      "code": "state.helpers = {};\nfor (const p of state.svcFiles) {\n  const w = await repo.window(p, 1, 40);\n  state.helpers[p] = w.lines.map(l => l.text).join(\"\\n\");\n}\nstate.helperContext = state.contracts + \"\\n\\n\" + Object.entries(state.helpers).map(([p, t]) => \"// FILE \" + p + \"\\n\" + t).join(\"\\n\\n\");\nprint({helperKeys: Object.keys(state.helpers), helperChars: Object.fromEntries(Object.entries(state.helpers).map(([k,v]) => [k, v.length])), contextChars: state.helperContext.length});",
+      "answer": "",
+      "output": "{\"helperKeys\":[\"services/bus.ts\",\"services/dispatch.ts\",\"services/journal.ts\",\"services/optional.ts\",\"services/outbox.ts\",\"services/recovery.ts\",\"services/retry.ts\",\"services/scheduler.ts\"],\"helperChars\":{\"services/bus.ts\":349,\"services/dispatch.ts\":211,\"services/journal.ts\":255,\"services/optional.ts\":202,\"services/outbox.ts\":150,\"services/recovery.ts\":430,\"services/retry.ts\":217,\"services/scheduler.ts\":208},\"contextChars\":3255}\n",
+      "operations": [
+        {
+          "method": "repo.window",
+          "args": [
+            "services/bus.ts",
+            1,
+            40
+          ]
+        },
+        {
+          "method": "repo.window",
+          "args": [
+            "services/dispatch.ts",
+            1,
+            40
+          ]
+        },
+        {
+          "method": "repo.window",
+          "args": [
+            "services/journal.ts",
+            1,
+            40
+          ]
+        },
+        {
+          "method": "repo.window",
+          "args": [
+            "services/optional.ts",
+            1,
+            40
+          ]
+        },
+        {
+          "method": "repo.window",
+          "args": [
+            "services/outbox.ts",
+            1,
+            40
+          ]
+        },
+        {
+          "method": "repo.window",
+          "args": [
+            "services/recovery.ts",
+            1,
+            40
+          ]
+        },
+        {
+          "method": "repo.window",
+          "args": [
+            "services/retry.ts",
+            1,
+            40
+          ]
+        },
+        {
+          "method": "repo.window",
+          "args": [
+            "services/scheduler.ts",
+            1,
+            40
+          ]
+        }
+      ],
+      "maps": [],
+      "usage": {
+        "input": 4903,
+        "output": 178,
+        "cacheRead": 1152,
+        "cacheWrite": 0,
+        "totalTokens": 6233,
+        "cost": {
+          "input": 0.009805999999999999,
+          "output": 0.001068,
+          "cacheRead": 0.000576,
+          "cacheWrite": 0,
+          "total": 0.011449999999999998
+        },
+        "provider": "xai",
+        "model": "grok-4.7",
+        "stopReason": "stop"
+      },
+      "errors": [],
+      "loaded": [
+        "services/bus.ts",
+        "services/dispatch.ts",
+        "services/journal.ts",
+        "services/optional.ts",
+        "services/outbox.ts",
+        "services/recovery.ts",
+        "services/retry.ts",
+        "services/scheduler.ts"
+      ],
+      "executedCode": "state.helpers = {};\nfor (const p of state.svcFiles) {\n  const w = await repo.window(p, 1, 40);\n  state.helpers[p] = w.lines.map(l => l.text).join(\"\\n\");\n}\nstate.helperContext = state.contracts + \"\\n\\n\" + Object.entries(state.helpers).map(([p, t]) => \"// FILE \" + p + \"\\n\" + t).join(\"\\n\\n\");\nprint({helperKeys: Object.keys(state.helpers), helperChars: Object.fromEntries(Object.entries(state.helpers).map(([k,v]) => [k, v.length])), contextChars: state.helperContext.length});",
+      "budget": {
+        "total": 14000,
+        "used": 5630,
+        "remaining": 8370,
+        "cellRemaining": 5567,
+        "rejectedChars": 0
+      },
+      "exposedLines": []
+    },
+    {
+      "step": 5,
+      "time": "2026-09-26T09:09:39.652Z",
+      "action": "code",
+      "code": "state.selected = {};\nfor (const id of state.candidates) state.selected[id] = state.records[id];\nstate.pass2 = await jev.map(state.selected, {\n  early: {\n    type: \"noul\",\n    instructions: \"For this handler, using the shared contracts and helper definitions: can a successful response become observable before the handler's audit event is durably stored? Contracts: appendCommitted resolves only after durable storage and rejects on failure; appendCommittedSync returns only after durable storage and throws on failure; commitOutbox atomically commits all events durably before resolving. Returning a successful response or calling response.send makes success observable immediately; later awaits cannot retract it. Process termination loses memory, microtasks, and timers. updateEntity/charge/render/query do not record audit events. Count audit only if this handler or a helper it calls actually records an audit/outbox event. Answer yes if success can be observed while the audit write is not yet durable: response before await of appendCommitted/commitOutbox; fire-and-forget promise; void/unawaited call; timer, microtask, queue, or retry buffer that returns before durable commit; catch that still returns success after audit rejection; or a helper that schedules audit after returning. Answer no if the handler has no audit action, or success is returned only after durable appendCommitted/appendCommittedSync/commitOutbox, including when a helper awaits that primitive before returning and the handler awaits the helper before responding. A later failure that prevents the response is not early acknowledgement.\"\n  }\n}, state.helperContext);\nstate.pass2Table = Object.entries(state.pass2.items).map(([id, r]) => ({\n  id,\n  status: r.status,\n  early: r.answers.early ? r.answers.early.probability : null\n}));\nprint(state.pass2Table);\nprint({unknown: state.pass2.unknown, errors: state.pass2.errors, requests: state.pass2.requests});",
+      "answer": "",
+      "output": "[{\"id\":\"handlers/billing.ts\",\"status\":\"completed\",\"early\":0.2},{\"id\":\"handlers/delivery.ts\",\"status\":\"completed\",\"early\":0.15},{\"id\":\"handlers/enrollment.ts\",\"status\":\"completed\",\"early\":0.39},{\"id\":\"handlers/exports.ts\",\"status\":\"completed\",\"early\":0.97},{\"id\":\"handlers/files.ts\",\"status\":\"completed\",\"early\":0.98},{\"id\":\"handlers/orders.ts\",\"status\":\"completed\",\"early\":0.89},{\"id\":\"handlers/preferences.ts\",\"status\":\"completed\",\"early\":0.68},{\"id\":\"handlers/profile.ts\",\"status\":\"completed\",\"early\":0.15},{\"id\":\"handlers/refunds.ts\",\"status\":\"completed\",\"early\":0.91},{\"id\":\"handlers/retention.ts\",\"status\":\"completed\",\"early\":0.12},{\"id\":\"handlers/sessions.ts\",\"status\":\"completed\",\"early\":0.1},{\"id\":\"handlers/webhook.ts\",\"status\":\"completed\",\"early\":0.94}]\n{\"unknown\":[],\"errors\":[],\"requests\":2}\n",
+      "operations": [
+        {
+          "method": "jev.map"
+        }
+      ],
+      "maps": [
+        {
+          "questions": {
+            "early": {
+              "type": "noul",
+              "instructions": "For this handler, using the shared contracts and helper definitions: can a successful response become observable before the handler's audit event is durably stored? Contracts: appendCommitted resolves only after durable storage and rejects on failure; appendCommittedSync returns only after durable storage and throws on failure; commitOutbox atomically commits all events durably before resolving. Returning a successful response or calling response.send makes success observable immediately; later awaits cannot retract it. Process termination loses memory, microtasks, and timers. updateEntity/charge/render/query do not record audit events. Count audit only if this handler or a helper it calls actually records an audit/outbox event. Answer yes if success can be observed while the audit write is not yet durable: response before await of appendCommitted/commitOutbox; fire-and-forget promise; void/unawaited call; timer, microtask, queue, or retry buffer that returns before durable commit; catch that still returns success after audit rejection; or a helper that schedules audit after returning. Answer no if the handler has no audit action, or success is returned only after durable appendCommitted/appendCommittedSync/commitOutbox, including when a helper awaits that primitive before returning and the handler awaits the helper before responding. A later failure that prevents the response is not early acknowledgement."
+            }
+          },
+          "batches": 2,
+          "records": [
+            {
+              "id": "handlers/billing.ts",
+              "material": "import { charge, type Request } from '../contracts';\nimport { record } from '../services/journal';\nexport async function billing(req: Request) {\n  await Promise.all([charge(req.id), record({ kind: 'invoice.charged', id: req.id })]);\n  return { status: 201, body: { invoice: req.id } };\n}\n"
+            },
+            {
+              "id": "handlers/delivery.ts",
+              "material": "import { type Request } from '../contracts';\nimport { deliver } from '../services/dispatch';\nexport async function delivery(req: Request) {\n  const receipt = await deliver({ kind: 'delivery.booked', id: req.id });\n  return { status: 202, body: receipt };\n}\n"
+            },
+            {
+              "id": "handlers/enrollment.ts",
+              "material": "import { type Request } from '../contracts';\nimport { withRetry } from '../services/retry';\nexport async function enrollment(req: Request) {\n  await withRetry({ kind: 'member.enrolled', id: req.id });\n  return { status: 201, body: req.user };\n}\n"
+            },
+            {
+              "id": "handlers/exports.ts",
+              "material": "import { render, type Request } from '../contracts';\nimport { schedule } from '../services/scheduler';\nexport async function exports(req: Request) {\n  const document = await render(req.id);\n  await schedule({ kind: 'export.created', id: req.id });\n  return { status: 200, body: document };\n}\n"
+            },
+            {
+              "id": "handlers/files.ts",
+              "material": "import { render, type Request, type Response } from '../contracts';\nimport { record } from '../services/journal';\nexport async function files(req: Request, response: Response) {\n  const content = await render(req.id);\n  response.send({ status: 200, body: content });\n  await record({ kind: 'file.downloaded', id: req.id });\n}\n"
+            },
+            {
+              "id": "handlers/orders.ts",
+              "material": "import { updateEntity, type Request } from '../contracts';\nimport { publish } from '../services/bus';\nexport async function orders(req: Request) {\n  await updateEntity(req.id, req.body);\n  await publish({ kind: 'order.updated', id: req.id });\n  return { status: 202, body: { accepted: req.id } };\n}\n"
+            },
+            {
+              "id": "handlers/preferences.ts",
+              "material": "import { updateEntity, type Request } from '../contracts';\nimport { attempt } from '../services/optional';\nexport async function preferences(req: Request) {\n  await updateEntity(req.user, req.body);\n  await attempt({ kind: 'preferences.changed', id: req.id });\n  return { status: 200, body: 'saved' };\n}\n"
+            },
+            {
+              "id": "handlers/profile.ts",
+              "material": "import { updateEntity, type Request } from '../contracts';\nimport { record } from '../services/journal';\nexport async function profile(req: Request) {\n  await updateEntity(req.user, req.body);\n  await record({ kind: 'profile.changed', id: req.id });\n  return { status: 200, body: 'updated' };\n}\n"
+            },
+            {
+              "id": "handlers/refunds.ts",
+              "material": "import { charge, type Request } from '../contracts';\nimport { submit } from '../services/recovery';\nexport async function refunds(req: Request) {\n  await charge(req.id);\n  await submit({ kind: 'refund.requested', id: req.id });\n  return { status: 202, body: { refund: req.id } };\n}\n"
+            },
+            {
+              "id": "handlers/retention.ts",
+              "material": "import { type Request } from '../contracts';\nimport { enqueue } from '../services/outbox';\nexport async function retention(req: Request) {\n  await enqueue({ kind: 'retention.requested', id: req.id });\n  return { status: 202, body: 'queued' };\n}\n"
+            },
+            {
+              "id": "handlers/sessions.ts",
+              "material": "import { type Request } from '../contracts';\nimport { recordSync } from '../services/journal';\nexport function sessions(req: Request) {\n  recordSync({ kind: 'session.created', id: req.id });\n  return { status: 201, body: { session: req.id } };\n}\n"
+            },
+            {
+              "id": "handlers/webhook.ts",
+              "material": "import { type Request } from '../contracts';\nimport { record } from '../services/journal';\nexport async function webhook(req: Request) {\n  void record({ kind: 'webhook.received', id: req.id });\n  return { status: 202, body: 'received' };\n}\n"
+            }
+          ],
+          "context": "export type Event = { kind: string; id: string };\nexport type Request = { id: string; user: string; body: string };\nexport type Reply = { status: number; body: unknown };\n// Resolves only after the event is on durable storage; rejects on failure.\nexport declare function appendCommitted(event: Event): Promise<void>;\n// Returns only after the event is on durable storage; throws on failure.\nexport declare function appendCommittedSync(event: Event): void;\n// Commits all events atomically to durable storage before resolving.\nexport declare function commitOutbox(events: Event[]): Promise<void>;\nexport declare function updateEntity(id: string, body: string): Promise<void>;\nexport declare function charge(id: string): Promise<void>;\nexport declare function render(id: string): Promise<string>;\nexport declare function query(term: string): Promise<string[]>;\n// send immediately makes the response observable; later awaits cannot retract it.\nexport type Response = { send(reply: Reply): void };\n\n\n// FILE services/bus.ts\nimport { type Event } from '../contracts';\nimport { record } from './journal';\nconst pending: Event[] = [];\nexport async function publish(event: Event): Promise<void> {\n  pending.push(event);\n}\nexport async function drain(): Promise<void> {\n  while (pending.length) {\n    const event = pending[0];\n    await record(event);\n    pending.shift();\n  }\n}\n\n// FILE services/dispatch.ts\nimport { type Event } from '../contracts';\nimport { record } from './journal';\nexport async function deliver(event: Event): Promise<{ receipt: string }> {\n  await record(event);\n  return { receipt: event.id };\n}\n\n// FILE services/journal.ts\nimport { appendCommitted, appendCommittedSync, type Event } from '../contracts';\nexport async function record(event: Event): Promise<void> {\n  await appendCommitted(event);\n}\nexport function recordSync(event: Event): void {\n  appendCommittedSync(event);\n}\n\n// FILE services/optional.ts\nimport { type Event } from '../contracts';\nimport { record } from './journal';\nexport async function attempt(event: Event): Promise<void> {\n  try {\n    await record(event);\n  } catch {\n    return;\n  }\n}\n\n// FILE services/outbox.ts\nimport { commitOutbox, type Event } from '../contracts';\nexport async function enqueue(event: Event): Promise<void> {\n  await commitOutbox([event]);\n}\n\n// FILE services/recovery.ts\nimport { type Event } from '../contracts';\nimport { record } from './journal';\nconst retryBuffer = new Map<string, Event>();\nexport async function submit(event: Event): Promise<void> {\n  retryBuffer.set(event.id, event);\n  queueMicrotask(() => { void flush().catch(() => {}); });\n}\nexport async function flush(): Promise<void> {\n  for (const [id, event] of retryBuffer) {\n    await record(event);\n    retryBuffer.delete(id);\n  }\n}\n\n// FILE services/retry.ts\nimport { type Event } from '../contracts';\nimport { record } from './journal';\nexport async function withRetry(event: Event): Promise<void> {\n  try {\n    await record(event);\n  } catch {\n    await record(event);\n  }\n}\n\n// FILE services/scheduler.ts\nimport { type Event } from '../contracts';\nimport { record } from './journal';\nexport async function schedule(event: Event): Promise<void> {\n  setTimeout(() => { void record(event).catch(() => {}); }, 250);\n}",
+          "result": {
+            "items": {
+              "handlers/billing.ts": {
+                "answers": {
+                  "early": {
+                    "type": "noul",
+                    "probability": 0.2,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  }
+                },
+                "unknown": [],
+                "completenessGuaranteed": false,
+                "status": "completed"
+              },
+              "handlers/delivery.ts": {
+                "answers": {
+                  "early": {
+                    "type": "noul",
+                    "probability": 0.15,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  }
+                },
+                "unknown": [],
+                "completenessGuaranteed": false,
+                "status": "completed"
+              },
+              "handlers/enrollment.ts": {
+                "answers": {
+                  "early": {
+                    "type": "noul",
+                    "probability": 0.39,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  }
+                },
+                "unknown": [],
+                "completenessGuaranteed": false,
+                "status": "completed"
+              },
+              "handlers/exports.ts": {
+                "answers": {
+                  "early": {
+                    "type": "noul",
+                    "probability": 0.97,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  }
+                },
+                "unknown": [],
+                "completenessGuaranteed": false,
+                "status": "completed"
+              },
+              "handlers/files.ts": {
+                "answers": {
+                  "early": {
+                    "type": "noul",
+                    "probability": 0.98,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  }
+                },
+                "unknown": [],
+                "completenessGuaranteed": false,
+                "status": "completed"
+              },
+              "handlers/orders.ts": {
+                "answers": {
+                  "early": {
+                    "type": "noul",
+                    "probability": 0.89,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  }
+                },
+                "unknown": [],
+                "completenessGuaranteed": false,
+                "status": "completed"
+              },
+              "handlers/preferences.ts": {
+                "answers": {
+                  "early": {
+                    "type": "noul",
+                    "probability": 0.68,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  }
+                },
+                "unknown": [],
+                "completenessGuaranteed": false,
+                "status": "completed"
+              },
+              "handlers/profile.ts": {
+                "answers": {
+                  "early": {
+                    "type": "noul",
+                    "probability": 0.15,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  }
+                },
+                "unknown": [],
+                "completenessGuaranteed": false,
+                "status": "completed"
+              },
+              "handlers/refunds.ts": {
+                "answers": {
+                  "early": {
+                    "type": "noul",
+                    "probability": 0.91,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  }
+                },
+                "unknown": [],
+                "completenessGuaranteed": false,
+                "status": "completed"
+              },
+              "handlers/retention.ts": {
+                "answers": {
+                  "early": {
+                    "type": "noul",
+                    "probability": 0.12,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  }
+                },
+                "unknown": [],
+                "completenessGuaranteed": false,
+                "status": "completed"
+              },
+              "handlers/sessions.ts": {
+                "answers": {
+                  "early": {
+                    "type": "noul",
+                    "probability": 0.1,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  }
+                },
+                "unknown": [],
+                "completenessGuaranteed": false,
+                "status": "completed"
+              },
+              "handlers/webhook.ts": {
+                "answers": {
+                  "early": {
+                    "type": "noul",
+                    "probability": 0.94,
+                    "choice": null,
+                    "probabilities": null,
+                    "score": null,
+                    "confidence": null
+                  }
+                },
+                "unknown": [],
+                "completenessGuaranteed": false,
+                "status": "completed"
+              }
+            },
+            "unknown": [],
+            "requests": 2,
+            "errors": [],
+            "completenessGuaranteed": false
+          }
+        }
+      ],
+      "usage": {
+        "input": 390,
+        "output": 450,
+        "cacheRead": 6016,
+        "cacheWrite": 0,
+        "totalTokens": 6856,
+        "cost": {
+          "input": 0.00078,
+          "output": 0.0027,
+          "cacheRead": 0.003008,
+          "cacheWrite": 0,
+          "total": 0.006488
+        },
+        "provider": "xai",
+        "model": "grok-4.7",
+        "stopReason": "stop"
+      },
+      "errors": [],
+      "loaded": [],
+      "executedCode": "state.selected = {};\nfor (const id of state.candidates) state.selected[id] = state.records[id];\nstate.pass2 = await jev.map(state.selected, {\n  early: {\n    type: \"noul\",\n    instructions: \"For this handler, using the shared contracts and helper definitions: can a successful response become observable before the handler's audit event is durably stored? Contracts: appendCommitted resolves only after durable storage and rejects on failure; appendCommittedSync returns only after durable storage and throws on failure; commitOutbox atomically commits all events durably before resolving. Returning a successful response or calling response.send makes success observable immediately; later awaits cannot retract it. Process termination loses memory, microtasks, and timers. updateEntity/charge/render/query do not record audit events. Count audit only if this handler or a helper it calls actually records an audit/outbox event. Answer yes if success can be observed while the audit write is not yet durable: response before await of appendCommitted/commitOutbox; fire-and-forget promise; void/unawaited call; timer, microtask, queue, or retry buffer that returns before durable commit; catch that still returns success after audit rejection; or a helper that schedules audit after returning. Answer no if the handler has no audit action, or success is returned only after durable appendCommitted/appendCommittedSync/commitOutbox, including when a helper awaits that primitive before returning and the handler awaits the helper before responding. A later failure that prevents the response is not early acknowledgement.\"\n  }\n}, state.helperContext);\nstate.pass2Table = Object.entries(state.pass2.items).map(([id, r]) => ({\n  id,\n  status: r.status,\n  early: r.answers.early ? r.answers.early.probability : null\n}));\nprint(state.pass2Table);\nprint({unknown: state.pass2.unknown, errors: state.pass2.errors, requests: state.pass2.requests});",
+      "budget": {
+        "total": 14000,
+        "used": 6434,
+        "remaining": 7566,
+        "cellRemaining": 5196,
+        "rejectedChars": 0
+      },
+      "exposedLines": []
+    },
+    {
+      "step": 6,
+      "time": "2026-09-26T09:09:48.713Z",
+      "action": "code",
+      "code": "const paths = [\"handlers/exports.ts\",\"handlers/files.ts\",\"handlers/orders.ts\",\"handlers/preferences.ts\",\"handlers/refunds.ts\",\"handlers/webhook.ts\",\"handlers/enrollment.ts\",\"services/scheduler.ts\",\"services/journal.ts\",\"services/bus.ts\",\"services/optional.ts\",\"services/recovery.ts\",\"services/retry.ts\"];\nstate.views = {};\nfor (const p of paths) {\n  const w = await repo.window(p, 1, 80);\n  state.views[p] = w;\n  print(w);\n}",
+      "answer": "",
+      "output": "FILE handlers/exports.ts\n1|import { render, type Request } from '../contracts';\n2|import { schedule } from '../services/scheduler';\n3|export async function exports(req: Request) {\n4|  const document = await render(req.id);\n5|  await schedule({ kind: 'export.created', id: req.id });\n6|  return { status: 200, body: document };\n7|}\nFILE handlers/files.ts\n1|import { render, type Request, type Response } from '../contracts';\n2|import { record } from '../services/journal';\n3|export async function files(req: Request, response: Response) {\n4|  const content = await render(req.id);\n5|  response.send({ status: 200, body: content });\n6|  await record({ kind: 'file.downloaded', id: req.id });\n7|}\nFILE handlers/orders.ts\n1|import { updateEntity, type Request } from '../contracts';\n2|import { publish } from '../services/bus';\n3|export async function orders(req: Request) {\n4|  await updateEntity(req.id, req.body);\n5|  await publish({ kind: 'order.updated', id: req.id });\n6|  return { status: 202, body: { accepted: req.id } };\n7|}\nFILE handlers/preferences.ts\n1|import { updateEntity, type Request } from '../contracts';\n2|import { attempt } from '../services/optional';\n3|export async function preferences(req: Request) {\n4|  await updateEntity(req.user, req.body);\n5|  await attempt({ kind: 'preferences.changed', id: req.id });\n6|  return { status: 200, body: 'saved' };\n7|}\nFILE handlers/refunds.ts\n1|import { charge, type Request } from '../contracts';\n2|import { submit } from '../services/recovery';\n3|export async function refunds(req: Request) {\n4|  await charge(req.id);\n5|  await submit({ kind: 'refund.requested', id: req.id });\n6|  return { status: 202, body: { refund: req.id } };\n7|}\nFILE handlers/webhook.ts\n1|import { type Request } from '../contracts';\n2|import { record } from '../services/journal';\n3|export async function webhook(req: Request) {\n4|  void record({ kind: 'webhook.received', id: req.id });\n5|  return { status: 202, body: 'received' };\n6|}\nFILE handlers/enrollment.ts\n1|import { type Request } from '../contracts';\n2|import { withRetry } from '../services/retry';\n3|export async function enrollment(req: Request) {\n4|  await withRetry({ kind: 'member.enrolled', id: req.id });\n5|  return { status: 201, body: req.user };\n6|}\nFILE services/scheduler.ts\n1|import { type Event } from '../contracts';\n2|import { record } from './journal';\n3|export async function schedule(event: Event): Promise<void> {\n4|  setTimeout(() => { void record(event).catch(() => {}); }, 250);\n5|}\nFILE services/journal.ts\n1|import { appendCommitted, appendCommittedSync, type Event } from '../contracts';\n2|export async function record(event: Event): Promise<void> {\n3|  await appendCommitted(event);\n4|}\n5|export function recordSync(event: Event): void {\n6|  appendCommittedSync(event);\n7|}\nFILE services/bus.ts\n1|import { type Event } from '../contracts';\n2|import { record } from './journal';\n3|const pending: Event[] = [];\n4|export async function publish(event: Event): Promise<void> {\n5|  pending.push(event);\n6|}\n7|export async function drain(): Promise<void> {\n8|  while (pending.length) {\n9|    const event = pending[0];\n10|    await record(event);\n11|    pending.shift();\n12|  }\n13|}\nFILE services/optional.ts\n1|import { type Event } from '../contracts';\n2|import { record } from './journal';\n3|export async function attempt(event: Event): Promise<void> {\n4|  try {\n5|    await record(event);\n6|  } catch {\n7|    return;\n8|  }\n9|}\nFILE services/recovery.ts\n1|import { type Event } from '../contracts';\n2|import { record } from './journal';\n3|const retryBuffer = new Map<string, Event>();\n4|export async function submit(event: Event): Promise<void> {\n5|  retryBuffer.set(event.id, event);\n6|  queueMicrotask(() => { void flush().catch(() => {}); });\n7|}\n8|export async function flush(): Promise<void> {\n9|  for (const [id, event] of retryBuffer) {\n10|    await record(event);\n11|    retryBuffer.delete(id);\n12|  }\n13|}\nFILE services/retry.ts\n1|import { type Event } from '../contracts';\n2|import { record } from './journal';\n3|export async function withRetry(event: Event): Promise<void> {\n4|  try {\n5|    await record(event);\n6|  } catch {\n7|    await record(event);\n8|  }\n9|}\n",
+      "operations": [
+        {
+          "method": "repo.window",
+          "args": [
+            "handlers/exports.ts",
+            1,
+            80
+          ]
+        },
+        {
+          "method": "repo.window",
+          "args": [
+            "handlers/files.ts",
+            1,
+            80
+          ]
+        },
+        {
+          "method": "repo.window",
+          "args": [
+            "handlers/orders.ts",
+            1,
+            80
+          ]
+        },
+        {
+          "method": "repo.window",
+          "args": [
+            "handlers/preferences.ts",
+            1,
+            80
+          ]
+        },
+        {
+          "method": "repo.window",
+          "args": [
+            "handlers/refunds.ts",
+            1,
+            80
+          ]
+        },
+        {
+          "method": "repo.window",
+          "args": [
+            "handlers/webhook.ts",
+            1,
+            80
+          ]
+        },
+        {
+          "method": "repo.window",
+          "args": [
+            "handlers/enrollment.ts",
+            1,
+            80
+          ]
+        },
+        {
+          "method": "repo.window",
+          "args": [
+            "services/scheduler.ts",
+            1,
+            80
+          ]
+        },
+        {
+          "method": "repo.window",
+          "args": [
+            "services/journal.ts",
+            1,
+            80
+          ]
+        },
+        {
+          "method": "repo.window",
+          "args": [
+            "services/bus.ts",
+            1,
+            80
+          ]
+        },
+        {
+          "method": "repo.window",
+          "args": [
+            "services/optional.ts",
+            1,
+            80
+          ]
+        },
+        {
+          "method": "repo.window",
+          "args": [
+            "services/recovery.ts",
+            1,
+            80
+          ]
+        },
+        {
+          "method": "repo.window",
+          "args": [
+            "services/retry.ts",
+            1,
+            80
+          ]
+        }
+      ],
+      "maps": [],
+      "usage": {
+        "input": 5992,
+        "output": 135,
+        "cacheRead": 1152,
+        "cacheWrite": 0,
+        "totalTokens": 7279,
+        "cost": {
+          "input": 0.011984,
+          "output": 0.0008100000000000001,
+          "cacheRead": 0.000576,
+          "cacheWrite": 0,
+          "total": 0.01337
+        },
+        "provider": "xai",
+        "model": "grok-4.7",
+        "stopReason": "stop"
+      },
+      "errors": [],
+      "loaded": [
+        "handlers/exports.ts",
+        "handlers/files.ts",
+        "handlers/orders.ts",
+        "handlers/preferences.ts",
+        "handlers/refunds.ts",
+        "handlers/webhook.ts",
+        "handlers/enrollment.ts",
+        "services/scheduler.ts",
+        "services/journal.ts",
+        "services/bus.ts",
+        "services/optional.ts",
+        "services/recovery.ts",
+        "services/retry.ts"
+      ],
+      "executedCode": "var paths = [\"handlers/exports.ts\",\"handlers/files.ts\",\"handlers/orders.ts\",\"handlers/preferences.ts\",\"handlers/refunds.ts\",\"handlers/webhook.ts\",\"handlers/enrollment.ts\",\"services/scheduler.ts\",\"services/journal.ts\",\"services/bus.ts\",\"services/optional.ts\",\"services/recovery.ts\",\"services/retry.ts\"];\nstate.views = {};\nfor (const p of paths) {\n  const w = await repo.window(p, 1, 80);\n  state.views[p] = w;\n  print(w);\n}",
+      "budget": {
+        "total": 14000,
+        "used": 10630,
+        "remaining": 3370,
+        "cellRemaining": 1804,
+        "rejectedChars": 0
+      },
+      "exposedLines": [
+        "handlers/exports.ts:1",
+        "handlers/exports.ts:2",
+        "handlers/exports.ts:3",
+        "handlers/exports.ts:4",
+        "handlers/exports.ts:5",
+        "handlers/exports.ts:6",
+        "handlers/exports.ts:7",
+        "handlers/files.ts:1",
+        "handlers/files.ts:2",
+        "handlers/files.ts:3",
+        "handlers/files.ts:4",
+        "handlers/files.ts:5",
+        "handlers/files.ts:6",
+        "handlers/files.ts:7",
+        "handlers/orders.ts:1",
+        "handlers/orders.ts:2",
+        "handlers/orders.ts:3",
+        "handlers/orders.ts:4",
+        "handlers/orders.ts:5",
+        "handlers/orders.ts:6",
+        "handlers/orders.ts:7",
+        "handlers/preferences.ts:1",
+        "handlers/preferences.ts:2",
+        "handlers/preferences.ts:3",
+        "handlers/preferences.ts:4",
+        "handlers/preferences.ts:5",
+        "handlers/preferences.ts:6",
+        "handlers/preferences.ts:7",
+        "handlers/refunds.ts:1",
+        "handlers/refunds.ts:2",
+        "handlers/refunds.ts:3",
+        "handlers/refunds.ts:4",
+        "handlers/refunds.ts:5",
+        "handlers/refunds.ts:6",
+        "handlers/refunds.ts:7",
+        "handlers/webhook.ts:1",
+        "handlers/webhook.ts:2",
+        "handlers/webhook.ts:3",
+        "handlers/webhook.ts:4",
+        "handlers/webhook.ts:5",
+        "handlers/webhook.ts:6",
+        "handlers/enrollment.ts:1",
+        "handlers/enrollment.ts:2",
+        "handlers/enrollment.ts:3",
+        "handlers/enrollment.ts:4",
+        "handlers/enrollment.ts:5",
+        "handlers/enrollment.ts:6",
+        "services/scheduler.ts:1",
+        "services/scheduler.ts:2",
+        "services/scheduler.ts:3",
+        "services/scheduler.ts:4",
+        "services/scheduler.ts:5",
+        "services/journal.ts:1",
+        "services/journal.ts:2",
+        "services/journal.ts:3",
+        "services/journal.ts:4",
+        "services/journal.ts:5",
+        "services/journal.ts:6",
+        "services/journal.ts:7",
+        "services/bus.ts:1",
+        "services/bus.ts:2",
+        "services/bus.ts:3",
+        "services/bus.ts:4",
+        "services/bus.ts:5",
+        "services/bus.ts:6",
+        "services/bus.ts:7",
+        "services/bus.ts:8",
+        "services/bus.ts:9",
+        "services/bus.ts:10",
+        "services/bus.ts:11",
+        "services/bus.ts:12",
+        "services/bus.ts:13",
+        "services/optional.ts:1",
+        "services/optional.ts:2",
+        "services/optional.ts:3",
+        "services/optional.ts:4",
+        "services/optional.ts:5",
+        "services/optional.ts:6",
+        "services/optional.ts:7",
+        "services/optional.ts:8",
+        "services/optional.ts:9",
+        "services/recovery.ts:1",
+        "services/recovery.ts:2",
+        "services/recovery.ts:3",
+        "services/recovery.ts:4",
+        "services/recovery.ts:5",
+        "services/recovery.ts:6",
+        "services/recovery.ts:7",
+        "services/recovery.ts:8",
+        "services/recovery.ts:9",
+        "services/recovery.ts:10",
+        "services/recovery.ts:11",
+        "services/recovery.ts:12",
+        "services/recovery.ts:13",
+        "services/retry.ts:1",
+        "services/retry.ts:2",
+        "services/retry.ts:3",
+        "services/retry.ts:4",
+        "services/retry.ts:5",
+        "services/retry.ts:6",
+        "services/retry.ts:7",
+        "services/retry.ts:8",
+        "services/retry.ts:9"
+      ]
+    },
+    {
+      "step": 7,
+      "time": "2026-09-26T09:10:04.044Z",
+      "action": "code",
+      "code": "const more = [\"handlers/billing.ts\",\"handlers/delivery.ts\",\"handlers/profile.ts\",\"handlers/retention.ts\",\"handlers/sessions.ts\",\"services/dispatch.ts\",\"services/outbox.ts\"];\nfor (const p of more) {\n  print(await repo.window(p, 1, 30));\n}",
+      "answer": "",
+      "output": "FILE handlers/billing.ts\n1|import { charge, type Request } from '../contracts';\n2|import { record } from '../services/journal';\n3|export async function billing(req: Request) {\n4|  await Promise.all([charge(req.id), record({ kind: 'invoice.charged', id: req.id })]);\n5|  return { status: 201, body: { invoice: req.id } };\n6|}\nFILE handlers/delivery.ts\n1|import { type Request } from '../contracts';\n2|import { deliver } from '../services/dispatch';\n3|export async function delivery(req: Request) {\n4|  const receipt = await deliver({ kind: 'delivery.booked', id: req.id });\n5|  return { status: 202, body: receipt };\n6|}\nFILE handlers/profile.ts\n1|import { updateEntity, type Request } from '../contracts';\n2|import { record } from '../services/journal';\n3|export async function profile(req: Request) {\n4|  await updateEntity(req.user, req.body);\n5|  await record({ kind: 'profile.changed', id: req.id });\n6|  return { status: 200, body: 'updated' };\n7|}\nFILE handlers/retention.ts\n1|import { type Request } from '../contracts';\n2|import { enqueue } from '../services/outbox';\n3|export async function retention(req: Request) {\n4|  await enqueue({ kind: 'retention.requested', id: req.id });\n5|  return { status: 202, body: 'queued' };\n6|}\nFILE handlers/sessions.ts\n1|import { type Request } from '../contracts';\n2|import { recordSync } from '../services/journal';\n3|export function sessions(req: Request) {\n4|  recordSync({ kind: 'session.created', id: req.id });\n5|  return { status: 201, body: { session: req.id } };\n6|}\nFILE services/dispatch.ts\n1|import { type Event } from '../contracts';\n2|import { record } from './journal';\n3|export async function deliver(event: Event): Promise<{ receipt: string }> {\n4|  await record(event);\n5|  return { receipt: event.id };\n6|}\nFILE services/outbox.ts\n1|import { commitOutbox, type Event } from '../contracts';\n2|export async function enqueue(event: Event): Promise<void> {\n3|  await commitOutbox([event]);\n4|}\n",
+      "operations": [
+        {
+          "method": "repo.window",
+          "args": [
+            "handlers/billing.ts",
+            1,
+            30
+          ]
+        },
+        {
+          "method": "repo.window",
+          "args": [
+            "handlers/delivery.ts",
+            1,
+            30
+          ]
+        },
+        {
+          "method": "repo.window",
+          "args": [
+            "handlers/profile.ts",
+            1,
+            30
+          ]
+        },
+        {
+          "method": "repo.window",
+          "args": [
+            "handlers/retention.ts",
+            1,
+            30
+          ]
+        },
+        {
+          "method": "repo.window",
+          "args": [
+            "handlers/sessions.ts",
+            1,
+            30
+          ]
+        },
+        {
+          "method": "repo.window",
+          "args": [
+            "services/dispatch.ts",
+            1,
+            30
+          ]
+        },
+        {
+          "method": "repo.window",
+          "args": [
+            "services/outbox.ts",
+            1,
+            30
+          ]
+        }
+      ],
+      "maps": [],
+      "usage": {
+        "input": 1638,
+        "output": 81,
+        "cacheRead": 7040,
+        "cacheWrite": 0,
+        "totalTokens": 8759,
+        "cost": {
+          "input": 0.003276,
+          "output": 0.000486,
+          "cacheRead": 0.0035199999999999997,
+          "cacheWrite": 0,
+          "total": 0.007281999999999999
+        },
+        "provider": "xai",
+        "model": "grok-4.7",
+        "stopReason": "stop"
+      },
+      "errors": [],
+      "loaded": [
+        "handlers/billing.ts",
+        "handlers/delivery.ts",
+        "handlers/profile.ts",
+        "handlers/retention.ts",
+        "handlers/sessions.ts",
+        "services/dispatch.ts",
+        "services/outbox.ts"
+      ],
+      "executedCode": "var more = [\"handlers/billing.ts\",\"handlers/delivery.ts\",\"handlers/profile.ts\",\"handlers/retention.ts\",\"handlers/sessions.ts\",\"services/dispatch.ts\",\"services/outbox.ts\"];\nfor (const p of more) {\n  print(await repo.window(p, 1, 30));\n}",
+      "budget": {
+        "total": 14000,
+        "used": 12585,
+        "remaining": 1415,
+        "cellRemaining": 1415,
+        "rejectedChars": 0
+      },
+      "exposedLines": [
+        "handlers/billing.ts:1",
+        "handlers/billing.ts:2",
+        "handlers/billing.ts:3",
+        "handlers/billing.ts:4",
+        "handlers/billing.ts:5",
+        "handlers/billing.ts:6",
+        "handlers/delivery.ts:1",
+        "handlers/delivery.ts:2",
+        "handlers/delivery.ts:3",
+        "handlers/delivery.ts:4",
+        "handlers/delivery.ts:5",
+        "handlers/delivery.ts:6",
+        "handlers/profile.ts:1",
+        "handlers/profile.ts:2",
+        "handlers/profile.ts:3",
+        "handlers/profile.ts:4",
+        "handlers/profile.ts:5",
+        "handlers/profile.ts:6",
+        "handlers/profile.ts:7",
+        "handlers/retention.ts:1",
+        "handlers/retention.ts:2",
+        "handlers/retention.ts:3",
+        "handlers/retention.ts:4",
+        "handlers/retention.ts:5",
+        "handlers/retention.ts:6",
+        "handlers/sessions.ts:1",
+        "handlers/sessions.ts:2",
+        "handlers/sessions.ts:3",
+        "handlers/sessions.ts:4",
+        "handlers/sessions.ts:5",
+        "handlers/sessions.ts:6",
+        "services/dispatch.ts:1",
+        "services/dispatch.ts:2",
+        "services/dispatch.ts:3",
+        "services/dispatch.ts:4",
+        "services/dispatch.ts:5",
+        "services/dispatch.ts:6",
+        "services/outbox.ts:1",
+        "services/outbox.ts:2",
+        "services/outbox.ts:3",
+        "services/outbox.ts:4"
+      ]
+    },
+    {
+      "step": 8,
+      "time": "2026-09-26T09:10:32.567Z",
+      "action": "code",
+      "code": "state.drainHits = await repo.search(\"drain(\");\nstate.flushHits = await repo.search(\"flush(\");\nstate.commitHits = await repo.search(\"commitOutbox\");\nprint({\n  drain: state.drainHits.hits.map(h => ({path:h.path, start:h.start, end:h.end})),\n  flush: state.flushHits.hits.map(h => ({path:h.path, start:h.start, end:h.end})),\n  commit: state.commitHits.hits.map(h => ({path:h.path, start:h.start, end:h.end})),\n  trunc: [state.drainHits.truncated, state.flushHits.truncated, state.commitHits.truncated]\n});",
+      "answer": "",
+      "output": "{\"drain\":[{\"path\":\"services/bus.ts\",\"start\":1,\"end\":13}],\"flush\":[{\"path\":\"services/recovery.ts\",\"start\":1,\"end\":13}],\"commit\":[{\"path\":\"contracts.ts\",\"start\":1,\"end\":15},{\"path\":\"services/outbox.ts\",\"start\":1,\"end\":4}],\"trunc\":[false,false,false]}\n",
+      "operations": [
+        {
+          "method": "repo.search",
+          "args": [
+            "drain(",
+            "."
+          ]
+        },
+        {
+          "method": "repo.search",
+          "args": [
+            "flush(",
+            "."
+          ]
+        },
+        {
+          "method": "repo.search",
+          "args": [
+            "commitOutbox",
+            "."
+          ]
+        }
+      ],
+      "maps": [],
+      "usage": {
+        "input": 8279,
+        "output": 171,
+        "cacheRead": 1152,
+        "cacheWrite": 0,
+        "totalTokens": 9602,
+        "cost": {
+          "input": 0.016558,
+          "output": 0.001026,
+          "cacheRead": 0.000576,
+          "cacheWrite": 0,
+          "total": 0.01816
+        },
+        "provider": "xai",
+        "model": "grok-4.7",
+        "stopReason": "stop"
+      },
+      "errors": [],
+      "loaded": [],
+      "executedCode": "state.drainHits = await repo.search(\"drain(\");\nstate.flushHits = await repo.search(\"flush(\");\nstate.commitHits = await repo.search(\"commitOutbox\");\nprint({\n  drain: state.drainHits.hits.map(h => ({path:h.path, start:h.start, end:h.end})),\n  flush: state.flushHits.hits.map(h => ({path:h.path, start:h.start, end:h.end})),\n  commit: state.commitHits.hits.map(h => ({path:h.path, start:h.start, end:h.end})),\n  trunc: [state.drainHits.truncated, state.flushHits.truncated, state.commitHits.truncated]\n});",
+      "budget": {
+        "total": 14000,
+        "used": 12834,
+        "remaining": 1166,
+        "cellRemaining": 1166,
+        "rejectedChars": 0
+      },
+      "exposedLines": []
+    },
+    {
+      "step": 9,
+      "time": "2026-09-26T09:11:18.094Z",
+      "action": "final",
+      "code": "",
+      "answer": "{\"findings\":[{\"path\":\"handlers/exports.ts\",\"mechanism\":\"Handler awaits schedule then returns 200, but schedule only registers a 250ms timer and returns. record/appendCommitted runs later inside that timer; rejection is swallowed. The response is therefore observable while the audit event is still only a timer callback. Process termination drops the timer before durability.\",\"evidence\":[\"handlers/exports.ts:3-6\",\"services/scheduler.ts:3-5\",\"services/journal.ts:2-4\"]},{\"path\":\"handlers/files.ts\",\"mechanism\":\"response.send emits status 200 before await record. send is immediately observable and a later await cannot retract it. Termination before appendCommitted resolves loses the in-flight audit write.\",\"evidence\":[\"handlers/files.ts:3-6\",\"services/journal.ts:2-4\"]},{\"path\":\"handlers/orders.ts\",\"mechanism\":\"Handler awaits publish then returns 202. publish only pushes the event onto an in-memory pending array and returns. Durable record happens only in drain, and a repo search finds drain solely at its definition in services/bus.ts — nothing on this request path calls it. Success is observable with the audit event only in memory.\",\"evidence\":[\"handlers/orders.ts:3-6\",\"services/bus.ts:3-13\"]},{\"path\":\"handlers/preferences.ts\",\"mechanism\":\"On the success path attempt awaits record before the handler returns 200. On failure, attempt catches appendCommitted rejection and returns normally, so preferences still returns 200. Success can therefore be observed when the audit event was not stored.\",\"evidence\":[\"handlers/preferences.ts:3-6\",\"services/optional.ts:3-8\",\"services/journal.ts:2-4\"]},{\"path\":\"handlers/refunds.ts\",\"mechanism\":\"Handler awaits submit then returns 202. submit only stores the event in an in-memory Map and queues flush on a microtask; it does not await record. flush later calls record and swallows errors. Response is observable before durability; termination drops the Map and microtask.\",\"evidence\":[\"handlers/refunds.ts:3-6\",\"services/recovery.ts:3-13\",\"services/journal.ts:2-4\"]},{\"path\":\"handlers/webhook.ts\",\"mechanism\":\"void record starts appendCommitted without awaiting it, then the handler returns 202. The successful response is observable before the promise settles; termination loses that in-flight write.\",\"evidence\":[\"handlers/webhook.ts:3-5\",\"services/journal.ts:2-4\"]}],\"ruled_out\":[{\"path\":\"handlers/billing.ts\",\"why\":\"Safe counterexample. Promise.all awaits both charge and record, and record awaits appendCommitted, before the 201 return (handlers/billing.ts:3-5, services/journal.ts:2-4). A record rejection prevents the response.\"},{\"path\":\"handlers/delivery.ts\",\"why\":\"Safe counterexample. deliver awaits record before returning the receipt; the handler awaits deliver before returning 202 (handlers/delivery.ts:3-5, services/dispatch.ts:3-5, services/journal.ts:2-4).\"},{\"path\":\"handlers/enrollment.ts\",\"why\":\"Safe counterexample despite pass2 probability 0.39. withRetry awaits record and, on rejection, awaits record again; a second rejection propagates, so enrollment returns 201 only after a successful durable append (handlers/enrollment.ts:3-5, services/retry.ts:3-8, services/journal.ts:2-4).\"},{\"path\":\"handlers/profile.ts\",\"why\":\"Safe counterexample. await record completes appendCommitted before the 200 return (handlers/profile.ts:3-6, services/journal.ts:2-4).\"},{\"path\":\"handlers/retention.ts\",\"why\":\"Safe counterexample. enqueue awaits commitOutbox before resolving; the handler awaits enqueue before returning 202 (handlers/retention.ts:3-5, services/outbox.ts:2-4).\"},{\"path\":\"handlers/sessions.ts\",\"why\":\"Safe counterexample. recordSync calls appendCommittedSync, which returns only after durable storage and throws on failure, before the 201 return (handlers/sessions.ts:3-5, services/journal.ts:5-7).\"}],\"limitations\":[\"Unresolved: handlers/assets.ts, handlers/catalog.ts, handlers/health.ts, handlers/locale.ts, handlers/metrics.ts, handlers/preview.ts, handlers/search.ts, and handlers/version.ts were only pass1-scored as not audit-relevant (probabilities about 0.03-0.05) and were not printed. If they have no audit action they are outside scope; absence of an audit call is not line-verified.\",\"contracts.ts was supplied as map context and commitOutbox search hit contracts.ts:1-15, but that body was not printed. Durability semantics used here are the stated primitive contracts plus the printed journal/outbox call sites.\",\"Search for drain(, flush(, and commitOutbox found no callers outside services/bus.ts, services/recovery.ts, services/outbox.ts, and contracts.ts. No other hidden caller was printed.\",\"preferences.ts is early only on the audit-failure path; the success path waits for appendCommitted.\"]}\n",
+      "output": "",
+      "operations": [],
+      "maps": [],
+      "usage": {
+        "input": 399,
+        "output": 1128,
+        "cacheRead": 9344,
+        "cacheWrite": 0,
+        "totalTokens": 10871,
+        "cost": {
+          "input": 0.000798,
+          "output": 0.006768000000000001,
+          "cacheRead": 0.004672,
+          "cacheWrite": 0,
+          "total": 0.012238
+        },
+        "provider": "xai",
+        "model": "grok-4.7",
+        "stopReason": "stop"
+      },
+      "errors": [],
+      "loaded": []
+    }
+  ],
+  "final": {
+    "findings": [
+      {
+        "path": "handlers/exports.ts",
+        "mechanism": "Handler awaits schedule then returns 200, but schedule only registers a 250ms timer and returns. record/appendCommitted runs later inside that timer; rejection is swallowed. The response is therefore observable while the audit event is still only a timer callback. Process termination drops the timer before durability.",
+        "evidence": [
+          "handlers/exports.ts:3-6",
+          "services/scheduler.ts:3-5",
+          "services/journal.ts:2-4"
+        ]
+      },
+      {
+        "path": "handlers/files.ts",
+        "mechanism": "response.send emits status 200 before await record. send is immediately observable and a later await cannot retract it. Termination before appendCommitted resolves loses the in-flight audit write.",
+        "evidence": [
+          "handlers/files.ts:3-6",
+          "services/journal.ts:2-4"
+        ]
+      },
+      {
+        "path": "handlers/orders.ts",
+        "mechanism": "Handler awaits publish then returns 202. publish only pushes the event onto an in-memory pending array and returns. Durable record happens only in drain, and a repo search finds drain solely at its definition in services/bus.ts — nothing on this request path calls it. Success is observable with the audit event only in memory.",
+        "evidence": [
+          "handlers/orders.ts:3-6",
+          "services/bus.ts:3-13"
+        ]
+      },
+      {
+        "path": "handlers/preferences.ts",
+        "mechanism": "On the success path attempt awaits record before the handler returns 200. On failure, attempt catches appendCommitted rejection and returns normally, so preferences still returns 200. Success can therefore be observed when the audit event was not stored.",
+        "evidence": [
+          "handlers/preferences.ts:3-6",
+          "services/optional.ts:3-8",
+          "services/journal.ts:2-4"
+        ]
+      },
+      {
+        "path": "handlers/refunds.ts",
+        "mechanism": "Handler awaits submit then returns 202. submit only stores the event in an in-memory Map and queues flush on a microtask; it does not await record. flush later calls record and swallows errors. Response is observable before durability; termination drops the Map and microtask.",
+        "evidence": [
+          "handlers/refunds.ts:3-6",
+          "services/recovery.ts:3-13",
+          "services/journal.ts:2-4"
+        ]
+      },
+      {
+        "path": "handlers/webhook.ts",
+        "mechanism": "void record starts appendCommitted without awaiting it, then the handler returns 202. The successful response is observable before the promise settles; termination loses that in-flight write.",
+        "evidence": [
+          "handlers/webhook.ts:3-5",
+          "services/journal.ts:2-4"
+        ]
+      }
+    ],
+    "ruled_out": [
+      {
+        "path": "handlers/billing.ts",
+        "why": "Safe counterexample. Promise.all awaits both charge and record, and record awaits appendCommitted, before the 201 return (handlers/billing.ts:3-5, services/journal.ts:2-4). A record rejection prevents the response."
+      },
+      {
+        "path": "handlers/delivery.ts",
+        "why": "Safe counterexample. deliver awaits record before returning the receipt; the handler awaits deliver before returning 202 (handlers/delivery.ts:3-5, services/dispatch.ts:3-5, services/journal.ts:2-4)."
+      },
+      {
+        "path": "handlers/enrollment.ts",
+        "why": "Safe counterexample despite pass2 probability 0.39. withRetry awaits record and, on rejection, awaits record again; a second rejection propagates, so enrollment returns 201 only after a successful durable append (handlers/enrollment.ts:3-5, services/retry.ts:3-8, services/journal.ts:2-4)."
+      },
+      {
+        "path": "handlers/profile.ts",
+        "why": "Safe counterexample. await record completes appendCommitted before the 200 return (handlers/profile.ts:3-6, services/journal.ts:2-4)."
+      },
+      {
+        "path": "handlers/retention.ts",
+        "why": "Safe counterexample. enqueue awaits commitOutbox before resolving; the handler awaits enqueue before returning 202 (handlers/retention.ts:3-5, services/outbox.ts:2-4)."
+      },
+      {
+        "path": "handlers/sessions.ts",
+        "why": "Safe counterexample. recordSync calls appendCommittedSync, which returns only after durable storage and throws on failure, before the 201 return (handlers/sessions.ts:3-5, services/journal.ts:5-7)."
+      }
+    ],
+    "limitations": [
+      "Unresolved: handlers/assets.ts, handlers/catalog.ts, handlers/health.ts, handlers/locale.ts, handlers/metrics.ts, handlers/preview.ts, handlers/search.ts, and handlers/version.ts were only pass1-scored as not audit-relevant (probabilities about 0.03-0.05) and were not printed. If they have no audit action they are outside scope; absence of an audit call is not line-verified.",
+      "contracts.ts was supplied as map context and commitOutbox search hit contracts.ts:1-15, but that body was not printed. Durability semantics used here are the stated primitive contracts plus the printed journal/outbox call sites.",
+      "Search for drain(, flush(, and commitOutbox found no callers outside services/bus.ts, services/recovery.ts, services/outbox.ts, and contracts.ts. No other hidden caller was printed.",
+      "preferences.ts is early only on the audit-failure path; the success path waits for appendCommitted."
+    ]
+  },
+  "metrics": {
+    "corpus": {
+      "readCalls": 21,
+      "searchCalls": 3,
+      "sourceCharsReturned": 13366,
+      "windowCalls": 28,
+      "symbolCalls": 1
+    },
+    "jev": {
+      "requestsReserved": 5,
+      "requests": 5,
+      "inputTokens": 17209,
+      "outputTokens": 1008,
+      "milliseconds": 1105.422998999995,
+      "unknownUsageRequests": 0
+    },
+    "runtime": {
+      "cells": 9,
+      "observationChars": 12834,
+      "chargedOutputChars": 12834
+    },
+    "steps": 9,
+    "seconds": 144.19534208299999,
+    "knownRootUSD": 0.09039799999999999,
+    "rootCostUnknown": false,
+    "rootInputTokens": 61357,
+    "rootOutputTokens": 2806,
+    "cacheReadTokens": 32768
+  },
+  "evaluation": {
+    "basis": "Authored fixture key written before runs. Path matches and citation bounds are mechanical checks; semantic evidence still needs review.",
+    "expected": 6,
+    "matched": [
+      "handlers/exports.ts",
+      "handlers/files.ts",
+      "handlers/orders.ts",
+      "handlers/preferences.ts",
+      "handlers/refunds.ts",
+      "handlers/webhook.ts"
+    ],
+    "falsePositives": [],
+    "missed": [],
+    "duplicates": 0,
+    "citations": [
+      {
+        "finding": "handlers/exports.ts",
+        "citation": "handlers/exports.ts:3-6",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/exports.ts",
+        "citation": "services/scheduler.ts:3-5",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/exports.ts",
+        "citation": "services/journal.ts:2-4",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/files.ts",
+        "citation": "handlers/files.ts:3-6",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/files.ts",
+        "citation": "services/journal.ts:2-4",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/orders.ts",
+        "citation": "handlers/orders.ts:3-6",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/orders.ts",
+        "citation": "services/bus.ts:3-13",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/preferences.ts",
+        "citation": "handlers/preferences.ts:3-6",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/preferences.ts",
+        "citation": "services/optional.ts:3-8",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/preferences.ts",
+        "citation": "services/journal.ts:2-4",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/refunds.ts",
+        "citation": "handlers/refunds.ts:3-6",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/refunds.ts",
+        "citation": "services/recovery.ts:3-13",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/refunds.ts",
+        "citation": "services/journal.ts:2-4",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/webhook.ts",
+        "citation": "handlers/webhook.ts:3-5",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/webhook.ts",
+        "citation": "services/journal.ts:2-4",
+        "valid": true,
+        "seenInRootOutput": true
+      }
+    ]
+  }
+}

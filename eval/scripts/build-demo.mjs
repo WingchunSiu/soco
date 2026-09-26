@@ -1,0 +1,10 @@
+import { readFileSync, writeFileSync } from 'node:fs';
+const replay=JSON.parse(readFileSync('demo/replay.json','utf8'));
+if (replay.run !== 'dispatch-jev-5.json') throw new Error('The film is choreographed for dispatch-jev-5. Export that run before rebuilding.');
+const maps=replay.turns.flatMap(t=>t.maps);
+const first=maps[0].result.items, second=maps[1].result.items;
+const records=Object.entries(first).map(([path,r])=>({name:path.replace('handlers/','').replace('.ts',''),audit:r.answers.auditRelevant.probability,early:second[path]?.answers.early.probability??null}));
+const data={records,run:replay.run,judgments:records.length*2+Object.keys(second).length,requests:replay.metrics.jev.requests,rootSeconds:replay.metrics.seconds};
+const html=readFileSync('demo/film-template.html','utf8').replace('/*__FILM_DATA__*/',JSON.stringify(data).replaceAll('<','\\u003c'));
+writeFileSync('demo/index.html',html);
+console.log('Built animated demo from '+data.run);

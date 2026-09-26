@@ -12,13 +12,13 @@ export function parseAction(value: string): { action: "code"; code: string } | {
   throw new Error("Expected a code or final action");
 }
 export async function runHarness(options: {
-  task: string; runtime: Runtime; root: RootModel; mode: "jev" | "read"; maxSteps?: number; trace?: Trace;
+  task: string; runtime: Runtime; root: RootModel; mode: "jev" | "read"; maxSteps?: number; trace?: Trace; requireJev?: boolean;
 }) {
   const { task, runtime, root, mode, trace = () => {} } = options;
   text(task, "task", 8000);
   const maxSteps = integer(options.maxSteps ?? 12, "maxSteps", 1, 100);
   const messages: Turn[] = [{ role: "user", content: task }];
-  const system = systemPrompt(mode);
+  const system = systemPrompt(mode, runtime.outputBudget, runtime.cellBudget, options.requireJev ?? false);
   const usages: unknown[] = [];
   const started = performance.now();
   trace({ type: "run_start", mode, task, maxSteps, systemPrompt: system });
@@ -34,7 +34,7 @@ export async function runHarness(options: {
       continue;
     }
     if (action.action === "final") {
-      if (mode === "jev" && runtime.calls === 0) {
+      if (mode === "jev" && options.requireJev && runtime.calls === 0) {
         messages.push({ role: "user", content: "Final is blocked until the code calls jev.ask, jev.locate, or jev.filter. Send source to Jev and print scores, not whole files." });
         continue;
       }

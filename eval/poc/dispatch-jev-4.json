@@ -1,0 +1,234 @@
+{
+  "run": "dispatch-jev-4.json",
+  "trace": "dispatch-jev-4.jsonl",
+  "harnessHash": "110d2f780dd15b0842e7d8bc8c91fceba205ab50ea90fda6c960d1ede67cbf2a",
+  "metrics": {
+    "corpus": {
+      "readCalls": 21,
+      "searchCalls": 0,
+      "sourceCharsReturned": 12657,
+      "windowCalls": 28,
+      "symbolCalls": 0
+    },
+    "jev": {
+      "requestsReserved": 4,
+      "requests": 4,
+      "inputTokens": 14429,
+      "outputTokens": 1006,
+      "milliseconds": 662.0017489999937,
+      "unknownUsageRequests": 0
+    },
+    "runtime": {
+      "cells": 9,
+      "observationChars": 13955,
+      "chargedOutputChars": 13955
+    },
+    "steps": 9,
+    "seconds": 111.73205183299999,
+    "knownRootUSD": 0.11153199999999999,
+    "rootCostUnknown": false,
+    "rootInputTokens": 62864,
+    "rootOutputTokens": 2658,
+    "cacheReadTokens": 20096
+  },
+  "evaluation": {
+    "basis": "Authored fixture key written before runs. Path matches and citation bounds are mechanical checks; semantic evidence still needs review.",
+    "expected": 6,
+    "matched": [
+      "handlers/exports.ts",
+      "handlers/files.ts",
+      "handlers/webhook.ts",
+      "handlers/orders.ts",
+      "handlers/preferences.ts",
+      "handlers/refunds.ts"
+    ],
+    "falsePositives": [],
+    "missed": [],
+    "duplicates": 0,
+    "citations": [
+      {
+        "finding": "handlers/exports.ts",
+        "citation": "handlers/exports.ts:4-6",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/exports.ts",
+        "citation": "services/scheduler.ts:3-4",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/exports.ts",
+        "citation": "services/journal.ts:2-3",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/files.ts",
+        "citation": "handlers/files.ts:4-6",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/files.ts",
+        "citation": "services/journal.ts:2-3",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/webhook.ts",
+        "citation": "handlers/webhook.ts:4-5",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/webhook.ts",
+        "citation": "services/journal.ts:2-3",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/orders.ts",
+        "citation": "handlers/orders.ts:4-6",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/orders.ts",
+        "citation": "services/bus.ts:3-12",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/orders.ts",
+        "citation": "services/journal.ts:2-3",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/preferences.ts",
+        "citation": "handlers/preferences.ts:4-6",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/preferences.ts",
+        "citation": "services/optional.ts:3-8",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/preferences.ts",
+        "citation": "services/journal.ts:2-3",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/refunds.ts",
+        "citation": "handlers/refunds.ts:4-6",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/refunds.ts",
+        "citation": "services/recovery.ts:3-12",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/refunds.ts",
+        "citation": "services/journal.ts:2-3",
+        "valid": true,
+        "seenInRootOutput": true
+      }
+    ]
+  },
+  "final": {
+    "findings": [
+      {
+        "path": "handlers/exports.ts",
+        "mechanism": "Awaits schedule(), which only registers a 250ms setTimeout and returns immediately. The timer later calls record() (appendCommitted) and swallows rejection. The handler then returns 200 while the audit is still only a timer. Process exit drops the timer, so success is observable before durability.",
+        "evidence": [
+          "handlers/exports.ts:4-6",
+          "services/scheduler.ts:3-4",
+          "services/journal.ts:2-3"
+        ]
+      },
+      {
+        "path": "handlers/files.ts",
+        "mechanism": "response.send({status:200}) runs before await record(). send is observable immediately and later awaits cannot retract it; a crash after send loses the in-flight appendCommitted.",
+        "evidence": [
+          "handlers/files.ts:4-6",
+          "services/journal.ts:2-3"
+        ]
+      },
+      {
+        "path": "handlers/webhook.ts",
+        "mechanism": "void record() starts appendCommitted without awaiting it, then returns 202. The floating promise is not durable yet and is lost with the process.",
+        "evidence": [
+          "handlers/webhook.ts:4-5",
+          "services/journal.ts:2-3"
+        ]
+      },
+      {
+        "path": "handlers/orders.ts",
+        "mechanism": "Awaits publish(), which only pending.push(event) into a module array and never calls record/drain. The handler then returns 202. The audit stays in memory until some other caller drains; termination drops pending.",
+        "evidence": [
+          "handlers/orders.ts:4-6",
+          "services/bus.ts:3-12",
+          "services/journal.ts:2-3"
+        ]
+      },
+      {
+        "path": "handlers/preferences.ts",
+        "mechanism": "Awaits attempt(), which awaits record() but catches appendCommitted rejection and returns. The handler then returns 200 even though the audit was not stored. Success is not gated on durability.",
+        "evidence": [
+          "handlers/preferences.ts:4-6",
+          "services/optional.ts:3-8",
+          "services/journal.ts:2-3"
+        ]
+      },
+      {
+        "path": "handlers/refunds.ts",
+        "mechanism": "Awaits submit(), which only retryBuffer.set and schedules queueMicrotask(() => void flush().catch(() => {})), then returns. flush/record is not awaited. The handler returns 202 while the event is memory-only; exit drops the map and microtask, and flush failures are swallowed.",
+        "evidence": [
+          "handlers/refunds.ts:4-6",
+          "services/recovery.ts:3-12",
+          "services/journal.ts:2-3"
+        ]
+      }
+    ],
+    "ruled_out": [
+      {
+        "path": "handlers/billing.ts",
+        "why": "Promise.all awaits charge and record (appendCommitted) together; 201 is returned only after record resolves."
+      },
+      {
+        "path": "handlers/profile.ts",
+        "why": "await record() completes appendCommitted before the 200 return."
+      },
+      {
+        "path": "handlers/sessions.ts",
+        "why": "recordSync calls appendCommittedSync, which returns only after durable storage, before the 201 return."
+      },
+      {
+        "path": "handlers/delivery.ts",
+        "why": "await deliver() awaits record() before returning the receipt; the 202 follows that."
+      },
+      {
+        "path": "handlers/enrollment.ts",
+        "why": "await withRetry() awaits record(), and on failure awaits record() again before returning; a second failure rejects, so 201 is not returned without a completed append."
+      },
+      {
+        "path": "handlers/retention.ts",
+        "why": "await enqueue() awaits commitOutbox([event]), which commits durably before resolving; 202 follows that."
+      }
+    ],
+    "limitations": [
+      "No-audit handlers (assets, catalog, health, locale, metrics, preview, search, version) were outside scope. First-pass scores were ~0.04-0.06 and their bodies were not printed or line-cited.",
+      "services/outbox.ts was loaded into state; the printed view was a truncated line listing showing enqueue awaits commitOutbox at line 3, not a full window dump.",
+      "Second-pass scores were routing only. billing/enrollment/delivery/profile/sessions/retention were source-reviewed and ruled out despite mixed early scores (0.10-0.28). preferences (0.64) was confirmed unsafe because attempt swallows durability failure."
+    ]
+  }
+}

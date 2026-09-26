@@ -1,0 +1,99 @@
+{
+  "fixture": "dispatch",
+  "kind": "authored development fixture; not production evidence",
+  "expected": {
+    "handlers/orders.ts": {
+      "mechanism": "volatile queue",
+      "evidence": [
+        "services/bus.ts",
+        "contracts.ts"
+      ]
+    },
+    "handlers/refunds.ts": {
+      "mechanism": "detached volatile retry",
+      "evidence": [
+        "services/recovery.ts",
+        "contracts.ts"
+      ]
+    },
+    "handlers/exports.ts": {
+      "mechanism": "timer before persistence",
+      "evidence": [
+        "services/scheduler.ts",
+        "contracts.ts"
+      ]
+    },
+    "handlers/webhook.ts": {
+      "mechanism": "unawaited write",
+      "evidence": [
+        "services/journal.ts",
+        "contracts.ts"
+      ]
+    },
+    "handlers/preferences.ts": {
+      "mechanism": "swallowed storage failure",
+      "evidence": [
+        "services/optional.ts",
+        "services/journal.ts",
+        "contracts.ts"
+      ]
+    },
+    "handlers/files.ts": {
+      "mechanism": "response precedes awaited write",
+      "evidence": [
+        "services/journal.ts",
+        "contracts.ts"
+      ]
+    }
+  },
+  "safe": [
+    "handlers/profile.ts",
+    "handlers/billing.ts",
+    "handlers/delivery.ts",
+    "handlers/sessions.ts",
+    "handlers/enrollment.ts",
+    "handlers/retention.ts"
+  ],
+  "unrelated": [
+    "handlers/health.ts",
+    "handlers/metrics.ts",
+    "handlers/catalog.ts",
+    "handlers/preview.ts",
+    "handlers/search.ts",
+    "handlers/locale.ts",
+    "handlers/assets.ts",
+    "handlers/version.ts"
+  ],
+  "sources": {
+    "README.md": "7bc254b76ed4e872e60b08ca2a71fa2725290e4ded31e13d678d0de7726ba621",
+    "contracts.ts": "6635d4b5152e14241099a574ff3b895791648d152f8fb794c4578a32d7d511fd",
+    "services/journal.ts": "87f12c224570209585ff75a2c7397ba1b33494cd22b4fe4cbbed45b596915bdb",
+    "services/bus.ts": "bc734da1640daf70e456b3b66e00e2acae6e898168ae5db626a01b1dda520d86",
+    "services/recovery.ts": "39d8dde54ce57cfa0e95acd5441c3075d6cd28e7458bfc9df2df0a0ebe0dd84e",
+    "services/scheduler.ts": "e65222516166eb76fab4b7873b55ae3b590b2aceb8210b1afbb6d18a555956f3",
+    "services/dispatch.ts": "3fdd546716c9765da219f5431027e0206354402cb26277fc6db0b97bdc3e8ee4",
+    "services/optional.ts": "9503422b68a46192fa434b6fd8c5df1f045b7ad37574a52ecb44582789d7c1d6",
+    "services/retry.ts": "444c5d3f20ddb8a63640008c6446b39dfe79b8a0e5483b41f7540fa4df4e5be2",
+    "services/outbox.ts": "f5d63e55601b76d42cfe20866418798de9fe78ea05794337387f54b07add7ddb",
+    "handlers/orders.ts": "6042fcf892171fec02c6ba5e04e02a5e0cb44cc4bdb089404531a36bf7a9e732",
+    "handlers/refunds.ts": "70e65ca3907117c391725257c2495d421b96417de4f4ec7f1cb027f7be57c98b",
+    "handlers/exports.ts": "bfdb0f44c073bbba6d63387a0b138bdc39f31048ff75c327db3add7afe793652",
+    "handlers/webhook.ts": "82d4d44ac96300f1f629e78b360accbdac36ffc7eabd7196a0905d35919ec994",
+    "handlers/preferences.ts": "2a3b6303b7e54e4fd6becbec1aeae3ded94624c600f8f88d6eafef7217e2cf78",
+    "handlers/files.ts": "02a5022f8a09edaaf30b2d033b2c161650220124fc01e14f74d53c913d414d27",
+    "handlers/profile.ts": "34509817668016b3b9304bf48c5af0c39d46b51a9fff34fb9ac3bbf93e789648",
+    "handlers/billing.ts": "b739dbdb7cbf773d1a90ad586ea78e10d8748f9d3ad66d42fdcc7b4e86c20139",
+    "handlers/delivery.ts": "8bbca836b96aabe4849e96e40c2ec57ae4884ae2cdd8f6895ca7d0af242e6974",
+    "handlers/sessions.ts": "55fd0bdf4f255f5666bef17c33d20c947d74850baa5ca42f2b8baf2559475f11",
+    "handlers/enrollment.ts": "47abd72a87e52e7255c70a4b656675579317801c4af4b84383109fc291ad7436",
+    "handlers/retention.ts": "a1ebc5b23ec1969f1978df77cf2745a8e814c57889776b7acda0d217f1b593bf",
+    "handlers/health.ts": "b39e37a8447586408256696465d5b1b78081483f8cefe2272d893be97ed9c345",
+    "handlers/metrics.ts": "a9b9e741fd77217daeb75b90b27ed18bd258a87cea59dda591a070e701f22990",
+    "handlers/catalog.ts": "e03cae6c8afcfef650e29cf5e54084c2eabafe1e1aac7f9043109b0188e52633",
+    "handlers/preview.ts": "51a6ce6ccabcb4da96baf1087df655e9b76cc5c5c08ae1b2f93d268abd698e4a",
+    "handlers/search.ts": "348ecfad8d7846652e3a63535842fed66e700b471b39bc6b096919399f234aaa",
+    "handlers/locale.ts": "ad309eade9fd326ea984c5746389434493c24ac9eaee16065b5b8f5d4d94e5c9",
+    "handlers/assets.ts": "cf3d60b8cbfe562c61817c505692e9de5eea10ede7a21aab50ebbab2a67acc19",
+    "handlers/version.ts": "44d3b65afb91f2105bb9c3bf33574694eb3f17af2b750896400c496069ff5ac8"
+  }
+}

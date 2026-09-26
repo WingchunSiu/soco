@@ -129,7 +129,7 @@ test("symbol lines are declaration-only and locate returns scores without source
     assert.match(listed.output, /allowed/);
     assert.doesNotMatch(listed.output, /session cache/);
     const located = await runtime.eval('state.hit = await jev.locate("where is logout handled?", [state.decls]); print(state.hit);');
-    assert.match(located.output, /probability: 0\.8/);
+    assert.match(located.output, /"probability":0\.8/);
     assert.doesNotMatch(located.output, /export const allowed/);
     const opened = await runtime.eval('print(await repo.lines(state.hit.spans.slice(0, 1), 1));');
     assert.match(opened.output, /export const allowed/);
@@ -186,8 +186,8 @@ test("output truncation explicit; asynchronous hang terminates session", async (
   const runtime = new Runtime(f.corpus, undefined, 200);
   try {
     const big = await runtime.eval('print("x".repeat(20000));');
-    assert.equal(big.output.trim().length, 1612);
-    assert.match(big.output, /truncated/);
+    assert.equal(big.output, "");
+    assert.ok(big.budget!.rejectedChars >= 20000);
     assert.equal(big.truncated, true);
     const hung = await runtime.eval('await new Promise(() => {});');
     assert.match(hung.error!, /timed out/);

@@ -1,5 +1,6 @@
 import type { Corpus } from "./corpus.js";
-import { integer, text, type AskAnswer, type AskResult, type Judgment, type LocateResult, type Ref, type Selection, type SourceBlock, type Span, type SpanScore, type Trace } from "./types.js";
+import { mapBatches } from "./semantic-map.js";
+import { integer, text, type AskAnswer, type AskResult, type MapResult, type Judgment, type LocateResult, type Ref, type Selection, type SourceBlock, type Span, type SpanScore, type Trace } from "./types.js";
 
 export interface JevBody { model: string; state: unknown; questions: Record<string, unknown> }
 export type Transport = (body: JevBody, signal?: AbortSignal) => Promise<unknown>;
@@ -96,6 +97,7 @@ export function askBody(material: unknown, questions: Record<string, unknown>, m
   const entries = Object.entries(questions);
   if (entries.length < 1 || entries.length > 16) throw new Error("ask accepts 1 to 16 questions");
   const built: Record<string, unknown> = {};
+  const definitions = new Map<string, string>();
   for (const [id, raw] of entries) {
     if (!/^[a-z][a-z0-9_]{0,40}$/.test(id)) throw new Error(`question id ${id} must be a short lowercase name`);
     const question = record(raw);
@@ -113,6 +115,10 @@ export function askBody(material: unknown, questions: Record<string, unknown>, m
       if (!Array.isArray(question.criteria) || question.criteria.length < 2 || question.criteria.length > 8) throw new Error(`score ${id} needs 2 to 8 levels`);
     }
     built[id] = { type, instructions, ...(question.criteria !== undefined ? { criteria: question.criteria } : {}) };
+    const definition = JSON.stringify(built[id]);
+    const duplicate = definitions.get(definition);
+    if (duplicate) throw new Error(`Questions ${duplicate} and ${id} have identical definitions over shared material. Question IDs do not select records: explicitly name each target in instructions, or submit separate material.`);
+    definitions.set(definition, id);
   }
   const body: JevBody = { model, state: { material }, questions: built };
   if (Buffer.byteLength(JSON.stringify(body)) > MAX_BYTES) throw new Error("ask exceeds the 24 KB request limit; send a smaller material or fewer questions");
@@ -121,14 +127,14 @@ export function askBody(material: unknown, questions: Record<string, unknown>, m
 
 export function readAnswers(response: unknown, ids: string[]): AskResult {
   const answers = record(record(response).answers);
-  const parsed: Record<string, AskAnswer> = {};
+  const parsed: Record<string, AskAnswer> = Object.create(null);
   const unknown: string[] = [];
   for (const id of ids) {
     const raw = record(answers[id]);
     const type = raw.type === "noul" || raw.type === "choice" || raw.type === "score" ? raw.type : null;
     const probabilities = record(raw.probabilities);
     const usable = Object.fromEntries(Object.entries(probabilities).filter((entry): entry is [string, number] => unit(entry[1]) !== null));
-    const ranked = Object.entries(usable).sort((a, b) => b[1] - a[1]).slice(0, 4);
+    const ranked = Object.entries(usable).sort((a, b) => b[1] - a[1]);
     const answer: AskAnswer = {
       type,
       probability: type === "noul" ? unit(raw.noul) : null,
@@ -143,7 +149,7 @@ export function readAnswers(response: unknown, ids: string[]): AskResult {
   return { answers: parsed, unknown, completenessGuaranteed: false };
 }
 
-export function scoreLines(lines: Array<{ id: string; path: string; start: number; end: number; label?: string }>, response: unknown, view = 0): LocateResult {
+export function scoreLines(lines: Array<{ id: string; path: string; start: number; end: number; label?: string; sha256?: string }>, response: unknown, view = 0): LocateResult {
   const answers = record(record(response).answers);
   const where = record(answers.where);
   const probabilities = record(where.probabilities);
@@ -151,7 +157,7 @@ export function scoreLines(lines: Array<{ id: string; path: string; start: numbe
   const spans: SpanScore[] = lines.map(line => {
     const value = probabilities[line.id];
     return {
-      id: line.id, path: line.path, start: line.start, end: line.end, label: line.label ?? null, view,
+      id: line.id, path: line.path, start: line.start, end: line.end, label: line.label ?? null, sha256: line.sha256, view,
       probability: typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1 ? value : null,
     };
   });
@@ -171,6 +177,48 @@ export class Jev {
   readonly metrics = { requestsReserved: 0, requests: 0, inputTokens: 0, outputTokens: 0, milliseconds: 0, unknownUsageRequests: 0 };
   constructor(private corpus: Corpus, private transport: Transport, readonly model = "jev-latest", private maxRequests = 20, private trace: Trace = () => {}) {
     integer(maxRequests, "maxRequests", 1, 1000);
+  }
+  async map(records: Record<string, unknown>, questions: Record<string, unknown>, context?: unknown, signal?: AbortSignal): Promise<MapResult> {
+    const batches = mapBatches(records, questions, context, this.model);
+    if (this.metrics.requestsReserved + batches.length > this.maxRequests) throw new Error("Jev request budget exhausted; narrow the map or use repo.read/search");
+    this.metrics.requestsReserved += batches.length;
+    const items: MapResult["items"] = Object.fromEntries(Object.keys(records).map(id => [id, {
+      ...readAnswers({}, Object.keys(questions)), status: "not_attempted" as const,
+    }]));
+    const errors: MapResult["errors"] = [];
+    let requests = 0;
+    this.trace({ type: "jev_map_start", records: Object.keys(records), questions, batches: batches.length });
+    for (let index = 0; index < batches.length; index++) {
+      const { body, bindings } = batches[index]!;
+      this.trace({ type: "jev_map_batch", index, body, bindings });
+      let response: unknown;
+      try {
+        signal?.throwIfAborted();
+        requests++;
+        response = await this.call(body, Object.keys(questions).join(","), signal);
+      } catch {
+        for (const { record } of bindings) items[record]!.status = "failed";
+        errors.push({ batch: index, message: "Jev batch failed or was aborted; later batches were not attempted. Partial results are retained." });
+        break;
+      }
+      const parsed = readAnswers(response, bindings.map(b => b.wire));
+      for (const id of new Set(bindings.map(b => b.record))) {
+        items[id]!.unknown = [];
+        items[id]!.status = "completed";
+      }
+      for (const binding of bindings) {
+        const item = items[binding.record]!;
+        item.answers[binding.question] = parsed.answers[binding.wire]!;
+        if (parsed.unknown.includes(binding.wire)) {
+          item.unknown.push(binding.question);
+        }
+      }
+      this.trace({ type: "jev_map_batch_result", index, bindings, ...parsed });
+    }
+    const unknown = Object.entries(items).flatMap(([record, item]) => item.unknown.map(question => ({ record, question })));
+    const result: MapResult = { items, unknown, requests, errors, completenessGuaranteed: false };
+    this.trace({ type: "jev_map_result", ...result });
+    return result;
   }
   async filter(refs: Ref[], query: string, threshold = 0.35, signal?: AbortSignal): Promise<Selection> {
     text(query, "query");
@@ -210,6 +258,7 @@ export class Jev {
     if (!Array.isArray(views) || views.length < 1 || views.length > 8) throw new Error("locate accepts 1 to 8 views");
     const prepared = views.map((view, index) => this.prepareView(view, index));
     const bodies = prepared.map(view => locateBody(view.lines, question, this.model));
+    if (bodies.some(body => Buffer.byteLength(JSON.stringify(body)) > MAX_BYTES)) throw new Error("locate exceeds 24 KB; send fewer candidates or a shorter question");
     if (this.metrics.requestsReserved + bodies.length > this.maxRequests) throw new Error("Jev request budget exhausted; use repo.read/search or finish");
     this.metrics.requestsReserved += bodies.length;
     const byView: LocateResult[] = [];
@@ -239,14 +288,14 @@ export class Jev {
       const id = `L${String(lines.length).padStart(2, "0")}`;
       const path = text(span?.path, "span path", 500);
       const start = integer(span?.start, "span start", 1, 1_000_000);
-      const end = integer(span?.end, "span end", start, Math.min(start + 7, 1_000_000));
+      const end = integer(span?.end, "span end", start, 1_000_000);
       if (typeof span?.text !== "string" || span.text.length > 500) throw new Error("span text must be a string of at most 500 characters");
       const body = span.text;
       if (lines.length >= 80 || Buffer.byteLength(JSON.stringify(locateBody([...lines, { id, path, start, end, text: body }], "x", this.model))) > MAX_BYTES) {
         omitted++;
         continue;
       }
-      lines.push({ id, path, start, end, label: span.label === undefined ? undefined : text(span.label, "span label", 80), text: body });
+      lines.push({ id, path, start, end, sha256: span.sha256, label: span.label === undefined ? undefined : text(span.label, "span label", 80), text: body });
     }
     if (!lines.length) throw new Error(`view ${index} has no span small enough to send`);
     return { lines, omitted };
@@ -257,8 +306,11 @@ export class Jev {
     const body = askBody(material, questions, this.model);
     if (this.metrics.requestsReserved + 1 > this.maxRequests) throw new Error("Jev request budget exhausted; use repo.read/search or finish");
     this.metrics.requestsReserved += 1;
+    this.trace({ type: "jev_ask", body });
     const response = await this.call(body, Object.keys(body.questions).join(","), signal);
-    return readAnswers(response, Object.keys(body.questions));
+    const result = readAnswers(response, Object.keys(body.questions));
+    this.trace({ type: "jev_answers", ...result });
+    return result;
   }
 
   private async call(body: JevBody, query: string, signal?: AbortSignal): Promise<unknown> {

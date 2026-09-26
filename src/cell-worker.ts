@@ -1,5 +1,6 @@
-import vm from "node:vm";
-import { inspect } from "node:util";
+import repl from "node:repl";
+import { PassThrough } from "node:stream";
+import { OutputBudget, render } from "./output.js";
 
 // A disposable process for time limits, NOT a security sandbox for hostile code.
 let sequence = 0;
@@ -9,23 +10,20 @@ const rpc = (method: string, ...args: unknown[]) => new Promise((resolve, reject
   pending.set(id, { resolve, reject });
   process.send?.({ type: "rpc", id, method, args });
 });
-let output = "", truncated = false;
-const budgetArg = process.argv.indexOf("--print-budget");
-const printBudget = budgetArg >= 0 ? Number(process.argv[budgetArg + 1]) : 12000;
-const clip = (value: string) => value.length > 1600 ? value.slice(0, 1600) + "…[truncated]" : value;
+const arg = (name: string, fallback: number) => { const i = process.argv.indexOf(name); return i < 0 ? fallback : Number(process.argv[i + 1]); };
+const output = new OutputBudget(arg("--output-budget", 16000), arg("--cell-budget", 6000));
 const print = (...args: unknown[]) => {
-  if (output.length >= printBudget) {
-    if (!output.includes("print budget exhausted")) output += "print budget exhausted; print one cited line, not an index\n";
-    truncated = true;
-    return;
-  }
-  const line = args.map(v => clip(typeof v === "string" ? v : inspect(v, { depth: 5, maxArrayLength: 20, maxStringLength: 500, customInspect: false, getters: false }))).join(" ") + "\n";
-  const room = 12000 - output.length;
-  output += line.slice(0, Math.max(0, room));
-  if (line.length > room || args.some(v => (typeof v === "string" ? v : inspect(v)).length > 500)) truncated = true;
+  output.emit(args.map(render).join(" ") + "\n");
 };
-const context = vm.createContext({
-  state: {}, print, console: { log: print },
+const server = repl.start({prompt:"",input:new PassThrough(),output:new PassThrough(),terminal:false,ignoreUndefined:true});
+// Node's REPL reports some evaluation errors via its domain rather than the
+// eval callback. Forward both paths so a bad cell does not hang the session.
+let rejectEvaluation: ((error: Error) => void) | undefined;
+(server as unknown as { _domain: { on: (name: string, callback: (error: Error) => void) => void } })._domain.on("error", error => rejectEvaluation?.(error));
+server.on("error", error => rejectEvaluation?.(error));
+const context = server.context;
+Object.assign(context, {
+  state: {}, print, budget: () => output.status(), console: { log: print },
   repo: {
     files: (path = ".") => rpc("repo.files", path),
     blocks: (path = ".") => rpc("repo.blocks", path),
@@ -37,6 +35,7 @@ const context = vm.createContext({
   },
   ...(process.argv.includes("--read-only") ? {} : {
     jev: {
+      map: (records: Record<string, unknown>, questions: Record<string, unknown>, context?: unknown) => rpc("jev.map", records, questions, context),
       ask: (material: unknown, questions: Record<string, unknown>) => rpc("jev.ask", material, questions),
       filter: (refs: unknown[], question: string, threshold = 0.35) => rpc("jev.filter", refs, question, threshold),
       locate: (question: string, views: unknown[]) => rpc("jev.locate", question, views),
@@ -53,14 +52,18 @@ process.on("message", async (message: any) => {
     return;
   }
   if (message.type !== "eval") return;
-  output = ""; truncated = false;
+  output.resetCell();
   let error: string | undefined;
+  let fatal = false;
   try {
-    const script = new vm.Script(`(async () => {\n${message.code}\n})()`);
-    await script.runInContext(context, { timeout: 2000 });
+    await new Promise<void>((resolve, reject) => {
+      rejectEvaluation = reject;
+      server.eval(message.code + "\n", context, "soco-cell", (error: Error | null) => error ? reject(error) : resolve());
+    });
     // Unawaited RPCs would mutate state or spend budget after a cell appears done.
-    if (pending.size) throw new Error("Unawaited tool calls: await every repo/jev operation");
-  } catch (cause) { error = cause instanceof Error ? cause.message : String(cause); }
-  process.send?.({ type: "result", output, truncated, error });
+    if (pending.size) { fatal = true; throw new Error("Unawaited tool calls: await every repo/jev operation"); }
+  } catch (cause) { error = output.diagnostic(cause instanceof Error ? cause.message : String(cause)); }
+  rejectEvaluation = undefined;
+  process.send?.({ type: "result", output: output.output, truncated: output.rejectedChars > 0, budget: output.status(), error, fatal });
 });
 process.send?.({ type: "ready" });

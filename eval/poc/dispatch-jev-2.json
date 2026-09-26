@@ -1,0 +1,182 @@
+{
+  "run": "dispatch-jev-2.json",
+  "trace": "2026-09-26T08-57-23.065Z-3330ab57.jsonl",
+  "harnessHash": "bf081b443e399882ab63e0fe7c71e6628560628393280ab3e9657a86815c7910",
+  "metrics": {
+    "corpus": {
+      "readCalls": 0,
+      "searchCalls": 0,
+      "sourceCharsReturned": 8170,
+      "windowCalls": 30,
+      "symbolCalls": 2
+    },
+    "jev": {
+      "requestsReserved": 4,
+      "requests": 4,
+      "inputTokens": 10994,
+      "outputTokens": 1156,
+      "milliseconds": 638.4415010000012,
+      "unknownUsageRequests": 0
+    },
+    "runtime": {
+      "cells": 9,
+      "observationChars": 13993,
+      "chargedOutputChars": 13993
+    },
+    "steps": 10,
+    "seconds": 180.894752,
+    "knownRootUSD": 0.06811600000000001,
+    "rootCostUnknown": false,
+    "rootInputTokens": 68831,
+    "rootOutputTokens": 2105,
+    "cacheReadTokens": 54784
+  },
+  "evaluation": {
+    "basis": "Authored fixture key written before runs. Path matches and citation bounds are mechanical checks; semantic evidence still needs review.",
+    "expected": 6,
+    "matched": [
+      "handlers/files.ts",
+      "handlers/webhook.ts"
+    ],
+    "falsePositives": [],
+    "missed": [
+      "handlers/orders.ts",
+      "handlers/refunds.ts",
+      "handlers/exports.ts",
+      "handlers/preferences.ts"
+    ],
+    "duplicates": 0,
+    "citations": [
+      {
+        "finding": "handlers/files.ts",
+        "citation": "handlers/files.ts:3-7",
+        "valid": true,
+        "seenInRootOutput": false
+      },
+      {
+        "finding": "handlers/files.ts",
+        "citation": "contracts.ts:14-15",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/files.ts",
+        "citation": "contracts.ts:4-5",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/files.ts",
+        "citation": "services/journal.ts:2-4",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/files.ts",
+        "citation": "README.md:8-10",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/webhook.ts",
+        "citation": "handlers/webhook.ts:3-6",
+        "valid": true,
+        "seenInRootOutput": false
+      },
+      {
+        "finding": "handlers/webhook.ts",
+        "citation": "services/journal.ts:2-4",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/webhook.ts",
+        "citation": "contracts.ts:4-5",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/webhook.ts",
+        "citation": "README.md:8-10",
+        "valid": true,
+        "seenInRootOutput": true
+      }
+    ]
+  },
+  "final": {
+    "findings": [
+      {
+        "path": "handlers/files.ts",
+        "mechanism": "response.send makes the HTTP 200 observable before record/appendCommitted finishes. A later storage rejection or process termination can drop the in-flight audit; the send cannot be retracted.",
+        "evidence": [
+          "handlers/files.ts:3-7",
+          "contracts.ts:14-15",
+          "contracts.ts:4-5",
+          "services/journal.ts:2-4",
+          "README.md:8-10"
+        ]
+      },
+      {
+        "path": "handlers/webhook.ts",
+        "mechanism": "void record starts appendCommitted but does not await it, then the handler returns 202. Termination or a storage failure after that return can leave the audit off durable storage.",
+        "evidence": [
+          "handlers/webhook.ts:3-6",
+          "services/journal.ts:2-4",
+          "contracts.ts:4-5",
+          "README.md:8-10"
+        ]
+      }
+    ],
+    "ruled_out": [
+      {
+        "path": "handlers/profile.ts",
+        "why": "await record before return; record awaits appendCommitted, which resolves only after durable storage and rejects on failure, so a 200 is not returned unless the audit is durable."
+      },
+      {
+        "path": "handlers/billing.ts",
+        "why": "await Promise.all includes record (appendCommitted) before return; record rejection prevents the 201."
+      },
+      {
+        "path": "handlers/sessions.ts",
+        "why": "recordSync calls appendCommittedSync, which returns only after durable storage and throws on failure, before the 201 return."
+      },
+      {
+        "path": "handlers/retention.ts",
+        "why": "await enqueue awaits commitOutbox, which commits the audit to durable storage before resolving; a committed outbox record meets the audit requirement."
+      },
+      {
+        "path": "handlers/assets.ts",
+        "why": "No audit action; outside incident scope."
+      },
+      {
+        "path": "handlers/catalog.ts",
+        "why": "query only; no audit action."
+      },
+      {
+        "path": "handlers/health.ts",
+        "why": "No audit action."
+      },
+      {
+        "path": "handlers/locale.ts",
+        "why": "No audit action."
+      },
+      {
+        "path": "handlers/metrics.ts",
+        "why": "No audit action."
+      },
+      {
+        "path": "handlers/preview.ts",
+        "why": "render only; no audit action."
+      },
+      {
+        "path": "handlers/search.ts",
+        "why": "query only; no audit action."
+      },
+      {
+        "path": "handlers/version.ts",
+        "why": "No audit action."
+      }
+    ],
+    "limitations": "Helper bodies for deliver, withRetry, publish, attempt, and submit were loaded but never printed, so handlers/delivery.ts, handlers/enrollment.ts, handlers/orders.ts, handlers/preferences.ts, and handlers/refunds.ts stay unresolved; an await there is not treated as durability. services/scheduler.ts was only observed through the start of line 4 ('set'), so handlers/exports.ts is also unresolved. Initial jev.map scores are not findings. No service code was executed."
+  }
+}

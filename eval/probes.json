@@ -1,0 +1,247 @@
+{
+  "granularity": {
+    "results": [
+      {
+        "condition": "isolated",
+        "repeat": 1,
+        "materialChars": 923,
+        "ms": 240.10266699999997,
+        "answers": {
+          "store_ms": 0.75,
+          "compare_seconds": 0.46,
+          "unit_mismatch": 0.8,
+          "cancel_delete": 0.11,
+          "status_blocks": 0.9,
+          "complete_cause": 0.77
+        },
+        "unknown": []
+      },
+      {
+        "condition": "coherent",
+        "repeat": 1,
+        "materialChars": 8009,
+        "ms": 154.22087500000004,
+        "answers": {
+          "store_ms": 0.98,
+          "compare_seconds": 0.96,
+          "unit_mismatch": 0.88,
+          "cancel_delete": 0.05,
+          "status_blocks": 0.97,
+          "complete_cause": 0.88
+        },
+        "unknown": []
+      },
+      {
+        "condition": "whole_files",
+        "repeat": 1,
+        "materialChars": 16675,
+        "ms": 150.847708,
+        "answers": {
+          "store_ms": 0.97,
+          "compare_seconds": 0.9,
+          "unit_mismatch": 0.91,
+          "cancel_delete": 0.05,
+          "status_blocks": 0.96,
+          "complete_cause": 0.88
+        },
+        "unknown": []
+      },
+      {
+        "condition": "distracted",
+        "repeat": 1,
+        "materialChars": 16536,
+        "ms": 161.4782499999999,
+        "answers": {
+          "store_ms": 0.98,
+          "compare_seconds": 0.96,
+          "unit_mismatch": 0.91,
+          "cancel_delete": 0.05,
+          "status_blocks": 0.96,
+          "complete_cause": 0.82
+        },
+        "unknown": []
+      },
+      {
+        "condition": "isolated",
+        "repeat": 2,
+        "materialChars": 923,
+        "ms": 181.33508300000005,
+        "answers": {
+          "store_ms": 0.71,
+          "compare_seconds": 0.46,
+          "unit_mismatch": 0.81,
+          "cancel_delete": 0.11,
+          "status_blocks": 0.88,
+          "complete_cause": 0.77
+        },
+        "unknown": []
+      },
+      {
+        "condition": "coherent",
+        "repeat": 2,
+        "materialChars": 8009,
+        "ms": 141.49395900000013,
+        "answers": {
+          "store_ms": 0.98,
+          "compare_seconds": 0.95,
+          "unit_mismatch": 0.83,
+          "cancel_delete": 0.05,
+          "status_blocks": 0.96,
+          "complete_cause": 0.84
+        },
+        "unknown": []
+      },
+      {
+        "condition": "whole_files",
+        "repeat": 2,
+        "materialChars": 16675,
+        "ms": 169.5400000000002,
+        "answers": {
+          "store_ms": 0.97,
+          "compare_seconds": 0.87,
+          "unit_mismatch": 0.91,
+          "cancel_delete": 0.04,
+          "status_blocks": 0.96,
+          "complete_cause": 0.81
+        },
+        "unknown": []
+      },
+      {
+        "condition": "distracted",
+        "repeat": 2,
+        "materialChars": 16536,
+        "ms": 159.46212500000001,
+        "answers": {
+          "store_ms": 0.98,
+          "compare_seconds": 0.92,
+          "unit_mismatch": 0.91,
+          "cancel_delete": 0.05,
+          "status_blocks": 0.96,
+          "complete_cause": 0.83
+        },
+        "unknown": []
+      }
+    ],
+    "metrics": {
+      "requestsReserved": 8,
+      "requests": 8,
+      "inputTokens": 52834,
+      "outputTokens": 880,
+      "milliseconds": 1356.304668,
+      "unknownUsageRequests": 0
+    }
+  },
+  "binding": {
+    "sourceTrace": "/Users/michaelx/research/soco/runs/2026-09-26T03-06-42.165Z-13060652.jsonl",
+    "rows": [
+      {
+        "condition": "unbound",
+        "repeat": 1,
+        "ms": 272.518167,
+        "answers": {
+          "e101": 0.72,
+          "e102": 0.74,
+          "e103": 0.72,
+          "e104": 0.72,
+          "e105": 0.71,
+          "e106": 0.7,
+          "e107": 0.72,
+          "e108": 0.71,
+          "e109": 0.7,
+          "e110": 0.69,
+          "e111": 0.71,
+          "e112": 0.74,
+          "e113": 0.69,
+          "e114": 0.72,
+          "e115": 0.71,
+          "e116": 0.72
+        },
+        "usage": {
+          "input_tokens": 3879,
+          "output_tokens": 308
+        }
+      },
+      {
+        "condition": "bound",
+        "repeat": 1,
+        "ms": 116.47625,
+        "answers": {
+          "e101": 0.94,
+          "e102": 0.04,
+          "e103": 0.07,
+          "e104": 0.05,
+          "e105": 0.98,
+          "e106": 0.07,
+          "e107": 0.98,
+          "e108": 0.41,
+          "e109": 0.98,
+          "e110": 0.02,
+          "e111": 0.98,
+          "e112": 0.09,
+          "e113": 0.97,
+          "e114": 0.04,
+          "e115": 0.98,
+          "e116": 0.98
+        },
+        "usage": {
+          "input_tokens": 4023,
+          "output_tokens": 308
+        }
+      },
+      {
+        "condition": "unbound",
+        "repeat": 2,
+        "ms": 129.52500000000003,
+        "answers": {
+          "e101": 0.74,
+          "e102": 0.72,
+          "e103": 0.73,
+          "e104": 0.72,
+          "e105": 0.71,
+          "e106": 0.72,
+          "e107": 0.74,
+          "e108": 0.74,
+          "e109": 0.74,
+          "e110": 0.72,
+          "e111": 0.73,
+          "e112": 0.71,
+          "e113": 0.73,
+          "e114": 0.68,
+          "e115": 0.76,
+          "e116": 0.73
+        },
+        "usage": {
+          "input_tokens": 3879,
+          "output_tokens": 308
+        }
+      },
+      {
+        "condition": "bound",
+        "repeat": 2,
+        "ms": 157.95158400000003,
+        "answers": {
+          "e101": 0.94,
+          "e102": 0.04,
+          "e103": 0.07,
+          "e104": 0.05,
+          "e105": 0.98,
+          "e106": 0.06,
+          "e107": 0.98,
+          "e108": 0.41,
+          "e109": 0.98,
+          "e110": 0.02,
+          "e111": 0.98,
+          "e112": 0.11,
+          "e113": 0.97,
+          "e114": 0.04,
+          "e115": 0.98,
+          "e116": 0.98
+        },
+        "usage": {
+          "input_tokens": 4023,
+          "output_tokens": 308
+        }
+      }
+    ]
+  }
+}

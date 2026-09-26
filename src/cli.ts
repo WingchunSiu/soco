@@ -20,12 +20,12 @@ const numeric = (value: string | undefined, fallback: number, name: string, min:
 async function main() {
   const { values, positionals } = parseArgs({ allowPositionals: true, options: {
     root: { type: "string" }, path: { type: "string", default: "." }, query: { type: "string" }, task: { type: "string" },
-    mode: { type: "string", default: "jev" }, mock: { type: "boolean", default: false },
+    mode: { type: "string", default: "jev" }, "require-jev": { type: "boolean", default: false }, "output-budget": { type: "string" }, "cell-budget": { type: "string" }, mock: { type: "boolean", default: false },
     "max-steps": { type: "string" }, "max-jev-requests": { type: "string" }, provider: { type: "string" }, help: { type: "boolean" },
   } });
   const command = positionals[0];
   if (!command || values.help || command === "help") {
-    console.log(`soco (Node 22+)\n\nCommands:\n  demo                                  Scripted, offline, no keys\n  select --root DIR --path FILE_OR_DIR --query QUESTION [--mock]\n  session --root DIR [--mode jev|read] [--mock]\n    Persistent JSONL code session: stdin {"code":"..."}, stdout one result per line\n  run --root DIR --task QUESTION [--mode jev|read] [--max-steps 12]\n  models [--provider anthropic]\n\nProject .env: ${resolve(PROJECT, ".env")}\nLive select/session send candidate text to TypeSafe. run also needs ROOT_API_KEY and ROOT_MODEL.\nSessions execute model-generated JS in a child process; this is NOT a hostile-code sandbox.`);
+    console.log(`soco (Node 22+)\n\nCommands:\n  demo                                  Scripted, offline, no keys\n  select --root DIR --path FILE_OR_DIR --query QUESTION [--mock]\n  session --root DIR [--mode jev|read] [--mock]\n    Persistent JSONL code session: stdin {"code":"..."}, stdout one result per line\n  run --root DIR --task QUESTION [--mode jev|read] [--max-steps 12]\n  --require-jev                         Controlled run: require a semantic call before final\n  --output-budget 16000                 Cumulative printed-character budget (both modes)\n  --cell-budget 6000                    Per-cell print ceiling\n  models [--provider xai]\n\nProject .env: ${resolve(PROJECT, ".env")}\nLive select/session send candidate text to TypeSafe. run also needs ROOT_API_KEY and ROOT_MODEL.\nSessions execute model-generated JS in a child process; this is NOT a hostile-code sandbox.`);
     return;
   }
   if (command === "models") {
@@ -40,14 +40,21 @@ async function main() {
   const maxRequests = numeric(values["max-jev-requests"] ?? process.env.MAX_JEV_REQUESTS, 20, "maxJevRequests", 1, 1000);
   const maxSteps = numeric(values["max-steps"] ?? process.env.MAX_STEPS, 12, "maxSteps", 1, 100);
   const timeout = numeric(process.env.CELL_TIMEOUT_MS, 120000, "cellTimeout", 1, 600000);
+  const outputBudget = numeric(values["output-budget"], 16000, "outputBudget", 1, 1000000);
+  const cellBudget = numeric(values["cell-budget"], 6000, "cellBudget", 1, 1000000);
   const offline = command === "demo" || values.mock;
   const corpus = await Corpus.open(command === "demo" ? resolve(PROJECT, "examples/repo") : text(values.root, "--root"));
   const runId = `${new Date().toISOString().replaceAll(":", "-")}-${randomUUID().slice(0, 8)}`;
   const tracePath = resolve(PROJECT, "runs", `${runId}.jsonl`);
   mkdirSync(resolve(PROJECT, "runs"), { recursive: true, mode: 0o700 });
   closeSync(openSync(tracePath, "wx", 0o600));
-  const trace: Trace = event => appendFileSync(tracePath, JSON.stringify({ time: new Date().toISOString(), ...event }) + "\n");
-  trace({ type: "config", command, root: corpus.root, mode, mock: offline, maxRequests, maxSteps });
+  const observedUsage: unknown[] = [];
+  const started = performance.now();
+  const trace: Trace = event => {
+    if (event.type === "root_reply") observedUsage.push(event.usage ?? null);
+    appendFileSync(tracePath, JSON.stringify({ time: new Date().toISOString(), ...event }) + "\n");
+  };
+  trace({ type: "config", command, root: corpus.root, mode, mock: offline, maxRequests, maxSteps, outputBudget, cellBudget, requireJev: values["require-jev"] });
   const jev = new Jev(corpus, offline ? mockJev : httpTransport(process.env.TYPESAFE_API_KEY), process.env.JEV_MODEL ?? "jev-latest", maxRequests, trace);
   if (command === "select") {
     const refs = await corpus.blocks(values.path);
@@ -59,7 +66,7 @@ async function main() {
   const root = command === "demo" ? scriptedRoot() : command === "run" ? (await import("./root.js")).piRoot(
     process.env.ROOT_PROVIDER ?? "xai", text(process.env.ROOT_MODEL, "ROOT_MODEL"), process.env.ROOT_API_KEY,
   ) : undefined;
-  const runtime = new Runtime(corpus, mode === "jev" ? jev : undefined, timeout, trace);
+  const runtime = new Runtime(corpus, mode === "jev" ? jev : undefined, timeout, trace, outputBudget, cellBudget);
   const cleanup = () => { runtime.close(); process.exitCode = 130; };
   process.once("SIGINT", cleanup);
   try {
@@ -73,13 +80,17 @@ async function main() {
       }
     } else {
       const task = command === "demo" ? "Why can a session remain valid after logout?" : text(values.task, "--task", 8000);
-      const result = await runHarness({ task, runtime, root: root!, mode, maxSteps, trace });
+      const result = await runHarness({ task, runtime, root: root!, mode, maxSteps, trace, requireJev: values["require-jev"] });
       out({ ...result, mock: offline, metrics: { corpus: corpus.metrics, jev: jev.metrics, runtime: runtime.metrics }, tracePath });
       if (result.status !== "completed") process.exitCode = 2;
     }
   } catch (error) {
-    trace({ type: "run_error", error: error instanceof Error ? error.message : "Unknown error" });
-    throw error;
+    const result = { status: "error", error: error instanceof Error ? error.message : "Unknown error", rootUsage: observedUsage,
+      usageMayBeIncomplete: true, milliseconds: performance.now() - started,
+      metrics: { corpus: corpus.metrics, jev: jev.metrics, runtime: runtime.metrics }, tracePath };
+    trace({ type: "run_error", ...result });
+    out(result);
+    process.exitCode = 1;
   } finally { runtime.close(); process.removeListener("SIGINT", cleanup); }
 }
 main().catch(error => { process.stderr.write(JSON.stringify({ error: error instanceof Error ? error.message : "Command failed" }) + "\n"); process.exitCode = 1; });

@@ -1,0 +1,379 @@
+{
+  "run": "dispatch-jev-1.json",
+  "trace": "2026-09-26T08-54-14.859Z-aecb654e.jsonl",
+  "harnessHash": "fe4814901dbcc69d72e9859eb96bc60aeab08159b0de6c7f4423746edb95ba09",
+  "metrics": {
+    "corpus": {
+      "readCalls": 0,
+      "searchCalls": 0,
+      "sourceCharsReturned": 7982,
+      "windowCalls": 30,
+      "symbolCalls": 0
+    },
+    "jev": {
+      "requestsReserved": 12,
+      "requests": 12,
+      "inputTokens": 36559,
+      "outputTokens": 3468,
+      "milliseconds": 1881.932832999999,
+      "unknownUsageRequests": 0
+    },
+    "runtime": {
+      "cells": 11,
+      "observationChars": 13840,
+      "chargedOutputChars": 13990
+    },
+    "steps": 12,
+    "seconds": 177.597756792,
+    "knownRootUSD": 0.10477,
+    "rootCostUnknown": false,
+    "rootInputTokens": 91457,
+    "rootOutputTokens": 5312,
+    "cacheReadTokens": 73344
+  },
+  "evaluation": {
+    "basis": "Authored fixture key written before runs. Path matches and citation bounds are mechanical checks; semantic evidence still needs review.",
+    "expected": 6,
+    "matched": [
+      "handlers/exports.ts",
+      "handlers/files.ts",
+      "handlers/orders.ts",
+      "handlers/preferences.ts",
+      "handlers/refunds.ts",
+      "handlers/webhook.ts"
+    ],
+    "falsePositives": [],
+    "missed": [],
+    "duplicates": 0,
+    "citations": [
+      {
+        "finding": "handlers/exports.ts",
+        "citation": "handlers/exports.ts:3-7",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/exports.ts",
+        "citation": "services/scheduler.ts:4-6",
+        "valid": false,
+        "seenInRootOutput": false
+      },
+      {
+        "finding": "handlers/exports.ts",
+        "citation": "services/journal.ts:3-5",
+        "valid": true,
+        "seenInRootOutput": false
+      },
+      {
+        "finding": "handlers/exports.ts",
+        "citation": "contracts.ts:4-5",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/exports.ts",
+        "citation": "contracts.ts:14-15",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/exports.ts",
+        "citation": "README.md:8-10",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/files.ts",
+        "citation": "handlers/files.ts:3-7",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/files.ts",
+        "citation": "services/journal.ts:3-5",
+        "valid": true,
+        "seenInRootOutput": false
+      },
+      {
+        "finding": "handlers/files.ts",
+        "citation": "contracts.ts:4-5",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/files.ts",
+        "citation": "contracts.ts:14-15",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/files.ts",
+        "citation": "README.md:8-10",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/orders.ts",
+        "citation": "handlers/orders.ts:3-7",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/orders.ts",
+        "citation": "services/bus.ts:3-7",
+        "valid": true,
+        "seenInRootOutput": false
+      },
+      {
+        "finding": "handlers/orders.ts",
+        "citation": "services/bus.ts:8-14",
+        "valid": false,
+        "seenInRootOutput": false
+      },
+      {
+        "finding": "handlers/orders.ts",
+        "citation": "services/journal.ts:3-5",
+        "valid": true,
+        "seenInRootOutput": false
+      },
+      {
+        "finding": "handlers/orders.ts",
+        "citation": "contracts.ts:4-5",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/orders.ts",
+        "citation": "README.md:8-10",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/preferences.ts",
+        "citation": "handlers/preferences.ts:3-7",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/preferences.ts",
+        "citation": "services/optional.ts:4-9",
+        "valid": true,
+        "seenInRootOutput": false
+      },
+      {
+        "finding": "handlers/preferences.ts",
+        "citation": "services/journal.ts:3-5",
+        "valid": true,
+        "seenInRootOutput": false
+      },
+      {
+        "finding": "handlers/preferences.ts",
+        "citation": "contracts.ts:4-5",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/preferences.ts",
+        "citation": "README.md:8-10",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/refunds.ts",
+        "citation": "handlers/refunds.ts:3-7",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/refunds.ts",
+        "citation": "services/recovery.ts:4-9",
+        "valid": true,
+        "seenInRootOutput": false
+      },
+      {
+        "finding": "handlers/refunds.ts",
+        "citation": "services/recovery.ts:10-15",
+        "valid": false,
+        "seenInRootOutput": false
+      },
+      {
+        "finding": "handlers/refunds.ts",
+        "citation": "services/journal.ts:3-5",
+        "valid": true,
+        "seenInRootOutput": false
+      },
+      {
+        "finding": "handlers/refunds.ts",
+        "citation": "contracts.ts:4-5",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/refunds.ts",
+        "citation": "README.md:8-10",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/webhook.ts",
+        "citation": "handlers/webhook.ts:3-6",
+        "valid": true,
+        "seenInRootOutput": false
+      },
+      {
+        "finding": "handlers/webhook.ts",
+        "citation": "services/journal.ts:3-5",
+        "valid": true,
+        "seenInRootOutput": false
+      },
+      {
+        "finding": "handlers/webhook.ts",
+        "citation": "contracts.ts:4-5",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/webhook.ts",
+        "citation": "README.md:8-10",
+        "valid": true,
+        "seenInRootOutput": true
+      }
+    ]
+  },
+  "final": {
+    "findings": [
+      {
+        "path": "handlers/exports.ts",
+        "mechanism": "schedule() resolves after only arming a 250ms timer; record/appendCommitted runs later and its rejection is swallowed. A returned 200 is already observable, so process death drops the timer and a storage failure never retracts success.",
+        "evidence": [
+          "handlers/exports.ts:3-7",
+          "services/scheduler.ts:4-6",
+          "services/journal.ts:3-5",
+          "contracts.ts:4-5",
+          "contracts.ts:14-15",
+          "README.md:8-10"
+        ]
+      },
+      {
+        "path": "handlers/files.ts",
+        "mechanism": "response.send makes the 200 observable before await record/appendCommitted. Termination or a later storage failure cannot retract the sent response, so the download audit can be missing.",
+        "evidence": [
+          "handlers/files.ts:3-7",
+          "services/journal.ts:3-5",
+          "contracts.ts:4-5",
+          "contracts.ts:14-15",
+          "README.md:8-10"
+        ]
+      },
+      {
+        "path": "handlers/orders.ts",
+        "mechanism": "publish only pushes the event onto an in-memory pending array and resolves without record/appendCommitted. The handler then returns 202. Process termination loses the queue; drain is not on this path.",
+        "evidence": [
+          "handlers/orders.ts:3-7",
+          "services/bus.ts:3-7",
+          "services/bus.ts:8-14",
+          "services/journal.ts:3-5",
+          "contracts.ts:4-5",
+          "README.md:8-10"
+        ]
+      },
+      {
+        "path": "handlers/preferences.ts",
+        "mechanism": "attempt awaits record/appendCommitted but catches every failure and returns normally. preferences then returns 200, so a storage failure yields success without a durable preferences.changed event.",
+        "evidence": [
+          "handlers/preferences.ts:3-7",
+          "services/optional.ts:4-9",
+          "services/journal.ts:3-5",
+          "contracts.ts:4-5",
+          "README.md:8-10"
+        ]
+      },
+      {
+        "path": "handlers/refunds.ts",
+        "mechanism": "submit stores the event in an in-memory Map and queues flush via queueMicrotask, then resolves. refunds returns 202 before flush's record/appendCommitted. Death loses the buffer; flush errors are swallowed and cannot retract the response.",
+        "evidence": [
+          "handlers/refunds.ts:3-7",
+          "services/recovery.ts:4-9",
+          "services/recovery.ts:10-15",
+          "services/journal.ts:3-5",
+          "contracts.ts:4-5",
+          "README.md:8-10"
+        ]
+      },
+      {
+        "path": "handlers/webhook.ts",
+        "mechanism": "record (hence appendCommitted) is started but not awaited. The handler returns 202 immediately. Termination can kill the in-flight write, and a storage rejection cannot retract the already returned success.",
+        "evidence": [
+          "handlers/webhook.ts:3-6",
+          "services/journal.ts:3-5",
+          "contracts.ts:4-5",
+          "README.md:8-10"
+        ]
+      }
+    ],
+    "ruled_out": [
+      {
+        "path": "handlers/billing.ts",
+        "why": "Promise.all awaits both charge and record. record awaits appendCommitted, which rejects on storage failure, so 201 is not returned unless the invoice event is durable."
+      },
+      {
+        "path": "handlers/delivery.ts",
+        "why": "deliver awaits record/appendCommitted and returns a receipt only after that. delivery returns 202 only with that receipt, so failure prevents success."
+      },
+      {
+        "path": "handlers/enrollment.ts",
+        "why": "withRetry awaits record, and on failure awaits record again. A second storage failure rejects, so 201 is not returned. The retry is still a completed durable primitive, not a detached queue."
+      },
+      {
+        "path": "handlers/profile.ts",
+        "why": "updateEntity then await record/appendCommitted both complete before 200. Storage failure rejects the handler before success."
+      },
+      {
+        "path": "handlers/retention.ts",
+        "why": "enqueue awaits commitOutbox, which atomically commits before resolving. 202 is not returned unless the retention event is durable."
+      },
+      {
+        "path": "handlers/sessions.ts",
+        "why": "recordSync calls appendCommittedSync, which returns only after durable storage and throws on failure, before the success return."
+      },
+      {
+        "path": "handlers/assets.ts",
+        "why": "No audit action."
+      },
+      {
+        "path": "handlers/catalog.ts",
+        "why": "query only; no audit action."
+      },
+      {
+        "path": "handlers/health.ts",
+        "why": "No audit action."
+      },
+      {
+        "path": "handlers/locale.ts",
+        "why": "No audit action."
+      },
+      {
+        "path": "handlers/metrics.ts",
+        "why": "No audit action."
+      },
+      {
+        "path": "handlers/preview.ts",
+        "why": "render only; no audit action."
+      },
+      {
+        "path": "handlers/search.ts",
+        "why": "query only; no audit action."
+      },
+      {
+        "path": "handlers/version.ts",
+        "why": "No audit action."
+      }
+    ],
+    "limitations": [
+      "Source-established fixture analysis only; the service was not executed and no production incident was reproduced.",
+      "The follow-up jev.map was not usable as evidence: questions were applied independently to every material record, including README, so probabilities did not judge the bound handler. Classification uses the handler, helper, and contracts.ts text.",
+      "sessions.ts and webhook.ts bodies were confirmed via an earlier full service/handler load; the final print of those windows was truncated by the remaining output budget, so their citations rely on that prior read rather than a second printed window.",
+      "No other durable primitive exists beyond appendCommitted, appendCommittedSync, and commitOutbox. Await, async, and in-memory queue/timer helpers were not treated as durability. Handlers with no audit action were excluded from findings but checked as counterexamples."
+    ]
+  }
+}

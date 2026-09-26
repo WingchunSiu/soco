@@ -26,6 +26,8 @@ export interface Span {
   end: number;
   label?: string;
   text: string;
+  sha256?: string;
+  kind?: string;
 }
 export interface SpanScore {
   id: string;
@@ -36,6 +38,7 @@ export interface SpanScore {
   /** Which view this score belongs to. Probabilities compete only inside one view. */
   view: number;
   probability: number | null;
+  sha256?: string;
 }
 export interface LocateView {
   view: number;
@@ -64,6 +67,14 @@ export interface AskResult {
   answers: Record<string, AskAnswer>;
   /** Question ids whose answers were missing or not a usable number. */
   unknown: string[];
+  completenessGuaranteed: false;
+}
+export interface MapResult {
+  /** Original record IDs, never model-generated or normalized. */
+  items: Record<string, AskResult & { status: "completed" | "failed" | "not_attempted" }>;
+  unknown: Array<{ record: string; question: string }>;
+  requests: number;
+  errors: Array<{ batch: number; message: string }>;
   completenessGuaranteed: false;
 }
 export type Trace = (event: Record<string, unknown>) => void;

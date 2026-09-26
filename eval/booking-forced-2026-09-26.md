@@ -18,7 +18,7 @@ Trace: `runs/2026-09-26T01-18-16.203Z-af21e607.jsonl`.
 
 ## What the root actually saw
 
-It printed the file list and a truncated declaration index, then sent four windows to `jev.ask` without printing them. The first score print was cut off, but the visible choice was `cancel_keeps_hold` at 0.99. A second `jev.ask` returned compact scores, including `cancel_no_delete` 0.96. The last cell printed selected line ranges from `cancel.ts`, `holds.ts`, and the start of `sweep`. The print cut off before `booking.ts:16`, so that cited line was not in the returned observation. The model still quoted it. That quote is not established by the printed observation in this trace.
+It printed the file list and a truncated declaration index, then sent four windows to `jev.ask` without printing them. The first score print was marked truncated by the old runtime, but the stored observation contains the complete JSON. The visible choice was `cancel_keeps_hold` at 0.99. A second `jev.ask` returned compact scores, including `cancel_no_delete` 0.96. Correction after re-reading the raw trace: the last cell contains CANCEL, HOLDS, INV, and BOOK sections, including the complete `sweep` body and `booking.ts:16` (`holds.has(seatId)`). That cited line was visible to the root. The prior claim that it was cut off was incorrect; the old runtime falsely marked outputs over 500 characters as truncated.
 
 `sweep_units` was 0.32 on the first call and `units_bug` was 0.46 on the second. The unit mismatch was therefore not a high-confidence Jev judgment here. The root recovered it from the printed `sweep` lines. Jev was useful as a router to those lines, not as the proof.
 

@@ -1,3 +1,4 @@
+import ts from "typescript";
 import { createHash } from "node:crypto";
 import { lstat, readdir, readFile, realpath } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep, extname } from "node:path";
@@ -19,7 +20,7 @@ export class Corpus {
   private snapshots = new Map<string, Snapshot>();
   private refs = new Map<string, { ref: Ref; snapshot: Snapshot }>();
   private snapshotBytes = 0;
-  readonly metrics = { readCalls: 0, searchCalls: 0, sourceCharsReturned: 0 };
+  readonly metrics = { readCalls: 0, searchCalls: 0, sourceCharsReturned: 0, windowCalls: 0, symbolCalls: 0 };
   private constructor(readonly root: string) {}
   static async open(root: string): Promise<Corpus> {
     const path = await realpath(root);
@@ -114,13 +115,16 @@ export class Corpus {
   async window(path: string, start: number, end: number): Promise<{ path: string; start: number; lines: Span[] }> {
     text(path, "path", 500);
     integer(start, "window start", 1, 1_000_000);
-    integer(end, "window end", start, start + 79);
+    integer(end, "window end", start, start + 399);
     const snapshot = await this.snapshot(path);
     const from = start;
     const to = Math.min(snapshot.lines.length, end);
     const lines = snapshot.lines.slice(from - 1, to).map((line, index) => ({
-      id: `w${index}`, path, start: from + index, end: from + index, text: line.replace(/\r?\n$/, ""),
+      id: `${path}:${from + index}`, path, sha256: snapshot.sha256, start: from + index, end: from + index, text: line.replace(/\r?\n$/, ""),
     }));
+    if (from > snapshot.lines.length) throw new Error("Window starts beyond end of file");
+    this.metrics.windowCalls++;
+    this.metrics.sourceCharsReturned += lines.reduce((n, l) => n + l.text.length, 0);
     return { path, start: from, lines };
   }
   async lines(spans: Span[], padding = 0): Promise<SourceBlock[]> {
@@ -132,6 +136,8 @@ export class Corpus {
       const start = integer(span?.start, "span start", 1, 1_000_000);
       const end = integer(span?.end, "span end", start, 1_000_000);
       const snapshot = await this.snapshot(path);
+      if (!span.sha256 || span.sha256 !== snapshot.sha256) throw new Error("Span is missing its version or source changed; obtain new references");
+      if (end > snapshot.lines.length) throw new Error("Span ends beyond end of file");
       const from = Math.max(1, start - padding);
       const to = Math.min(snapshot.lines.length, end + padding);
       const value = snapshot.lines.slice(from - 1, to).join("");
@@ -153,21 +159,40 @@ export class Corpus {
     this.metrics.sourceCharsReturned += value.length;
     return { ...ref, start, end, chars: value.length, text: value };
   }
-  /**
-   * Deterministic symbol index. Returns declaration-like lines only, never bodies.
-   * The patterns are heuristics, not a parser; missed forms remain searchable and readable.
-   */
+  /** TS/JS AST ranges; other languages use a declaration-line fallback. No body is returned. */
   async symbols(path = "."): Promise<Span[]> {
     const spans: Span[] = [];
+    this.metrics.symbolCalls++;
     for (const file of await this.files(path)) {
       const snapshot = await this.snapshot(file);
-      snapshot.lines.forEach((line, index) => {
-        const label = symbolLabel(line);
-        if (!label) return;
-        const body = line.replace(/\r?\n$/, "");
-        if (body.trim()) spans.push({ id: `s${spans.length}`, path: file, start: index + 1, end: index + 1, label, text: body });
-      });
-      if (spans.length > 400) throw new Error("More than 400 symbol lines; narrow the path");
+      const add = (start: number, end: number, label: string, kind: string) => {
+        const declaration = snapshot.lines[start - 1]!.replace(/\r?\n$/, "");
+        spans.push({ id: `${file}:${start}`, path: file, start, end, label, kind, sha256: snapshot.sha256, text: declaration });
+        this.metrics.sourceCharsReturned += declaration.length;
+      };
+      if (/\.[cm]?[jt]sx?$/.test(file)) {
+        const tree = ts.createSourceFile(file, snapshot.lines.join(""), ts.ScriptTarget.Latest, true);
+        const walk = (node: ts.Node) => {
+          if (ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node) || ts.isMethodDeclaration(node)
+            || ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node) || ts.isEnumDeclaration(node)
+            || (ts.isVariableStatement(node) && node.parent === tree)) {
+            const start = tree.getLineAndCharacterOfPosition(node.getStart(tree)).line + 1;
+            const end = tree.getLineAndCharacterOfPosition(Math.max(node.getStart(tree), node.getEnd() - 1)).line + 1;
+            const name = ts.isVariableStatement(node) ? node.declarationList.declarations.map(d => d.name.getText(tree)).join(",")
+              : node.name?.getText(tree) ?? "default";
+            add(start, end, name, ts.SyntaxKind[node.kind]);
+          }
+          // Include methods but not implementation-local variable declarations.
+          ts.forEachChild(node, walk);
+        };
+        walk(tree);
+      } else {
+        snapshot.lines.forEach((line, index) => {
+          const label = symbolLabel(line) ?? line.match(/^\s*(?:async\s+)?(?:def|class)\s+(\w+)/)?.[1];
+          if (label) add(index + 1, index + 1, label, "declaration-line");
+        });
+      }
+      if (spans.length > 1000) throw new Error("More than 1000 symbols; narrow the path");
     }
     return spans;
   }

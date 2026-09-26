@@ -1,0 +1,234 @@
+{
+  "run": "dispatch-jev-3.json",
+  "trace": "dispatch-jev-3.jsonl",
+  "harnessHash": "bf081b443e399882ab63e0fe7c71e6628560628393280ab3e9657a86815c7910",
+  "metrics": {
+    "corpus": {
+      "readCalls": 21,
+      "searchCalls": 0,
+      "sourceCharsReturned": 7452,
+      "windowCalls": 8,
+      "symbolCalls": 0
+    },
+    "jev": {
+      "requestsReserved": 4,
+      "requests": 4,
+      "inputTokens": 13407,
+      "outputTokens": 1006,
+      "milliseconds": 870.2923749999973,
+      "unknownUsageRequests": 0
+    },
+    "runtime": {
+      "cells": 9,
+      "observationChars": 13414,
+      "chargedOutputChars": 13468
+    },
+    "steps": 9,
+    "seconds": 116.522975625,
+    "knownRootUSD": 0.09388400000000001,
+    "rootCostUnknown": false,
+    "rootInputTokens": 61489,
+    "rootOutputTokens": 3023,
+    "cacheReadTokens": 31488
+  },
+  "evaluation": {
+    "basis": "Authored fixture key written before runs. Path matches and citation bounds are mechanical checks; semantic evidence still needs review.",
+    "expected": 6,
+    "matched": [
+      "handlers/exports.ts",
+      "handlers/files.ts",
+      "handlers/orders.ts",
+      "handlers/preferences.ts",
+      "handlers/refunds.ts",
+      "handlers/webhook.ts"
+    ],
+    "falsePositives": [],
+    "missed": [],
+    "duplicates": 0,
+    "citations": [
+      {
+        "finding": "handlers/exports.ts",
+        "citation": "handlers/exports.ts:3-6",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/exports.ts",
+        "citation": "services/scheduler.ts:3-5",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/exports.ts",
+        "citation": "services/journal.ts:2-4",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/files.ts",
+        "citation": "handlers/files.ts:3-6",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/files.ts",
+        "citation": "services/journal.ts:2-4",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/orders.ts",
+        "citation": "handlers/orders.ts:3-6",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/orders.ts",
+        "citation": "services/bus.ts:3-13",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/orders.ts",
+        "citation": "services/journal.ts:2-4",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/preferences.ts",
+        "citation": "handlers/preferences.ts:3-6",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/preferences.ts",
+        "citation": "services/optional.ts:3-8",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/preferences.ts",
+        "citation": "services/journal.ts:2-4",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/refunds.ts",
+        "citation": "handlers/refunds.ts:3-6",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/refunds.ts",
+        "citation": "services/recovery.ts:3-12",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/refunds.ts",
+        "citation": "services/journal.ts:2-4",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/webhook.ts",
+        "citation": "handlers/webhook.ts:3-5",
+        "valid": true,
+        "seenInRootOutput": true
+      },
+      {
+        "finding": "handlers/webhook.ts",
+        "citation": "services/journal.ts:2-4",
+        "valid": true,
+        "seenInRootOutput": true
+      }
+    ]
+  },
+  "final": {
+    "findings": [
+      {
+        "path": "handlers/exports.ts",
+        "mechanism": "await schedule resolves before durability. schedule only registers a 250ms timer and returns; the timer later void-calls record (appendCommitted) and swallows rejection. The 200 return is already observable, and process death drops the timer.",
+        "evidence": [
+          "handlers/exports.ts:3-6",
+          "services/scheduler.ts:3-5",
+          "services/journal.ts:2-4"
+        ]
+      },
+      {
+        "path": "handlers/files.ts",
+        "mechanism": "response.send makes the 200 observable, then record/appendCommitted is awaited. A later await cannot retract the send; termination before appendCommitted resolves loses the audit.",
+        "evidence": [
+          "handlers/files.ts:3-6",
+          "services/journal.ts:2-4"
+        ]
+      },
+      {
+        "path": "handlers/orders.ts",
+        "mechanism": "await publish only pushes the event onto an in-memory pending array and returns. drain, which awaits record/appendCommitted, is never called by this handler, so the 202 is returned with no durable audit. Termination drops pending.",
+        "evidence": [
+          "handlers/orders.ts:3-6",
+          "services/bus.ts:3-13",
+          "services/journal.ts:2-4"
+        ]
+      },
+      {
+        "path": "handlers/preferences.ts",
+        "mechanism": "attempt awaits record but catches appendCommitted rejection and returns. preferences then returns 200, so success is observable when the audit event was not stored. The happy path does wait for durability; the failure path does not.",
+        "evidence": [
+          "handlers/preferences.ts:3-6",
+          "services/optional.ts:3-8",
+          "services/journal.ts:2-4"
+        ]
+      },
+      {
+        "path": "handlers/refunds.ts",
+        "mechanism": "submit only stores the event in an in-memory Map and queues an unawaited microtask flush. It resolves before appendCommitted finishes. refunds then returns 202. flush swallows errors; termination drops the buffer and microtask.",
+        "evidence": [
+          "handlers/refunds.ts:3-6",
+          "services/recovery.ts:3-12",
+          "services/journal.ts:2-4"
+        ]
+      },
+      {
+        "path": "handlers/webhook.ts",
+        "mechanism": "void record starts appendCommitted but does not await it. The 202 return happens in the same turn, before that promise can resolve. Termination drops the in-flight promise.",
+        "evidence": [
+          "handlers/webhook.ts:3-5",
+          "services/journal.ts:2-4"
+        ]
+      }
+    ],
+    "ruled_out": [
+      {
+        "path": "handlers/billing.ts",
+        "why": "Promise.all awaits record, which awaits appendCommitted, before the 201 return. Rejection prevents success."
+      },
+      {
+        "path": "handlers/delivery.ts",
+        "why": "deliver awaits record/appendCommitted and only then returns the receipt that delivery returns."
+      },
+      {
+        "path": "handlers/enrollment.ts",
+        "why": "withRetry awaits record and, on failure, awaits record again without swallowing the second failure, before the 201 return."
+      },
+      {
+        "path": "handlers/profile.ts",
+        "why": "await record/appendCommitted completes before the 200 return."
+      },
+      {
+        "path": "handlers/retention.ts",
+        "why": "enqueue awaits commitOutbox, which commits durably before resolving, and only then returns 202."
+      },
+      {
+        "path": "handlers/sessions.ts",
+        "why": "recordSync calls appendCommittedSync, which returns only after durable storage or throws, before the 201 return."
+      }
+    ],
+    "limitations": [
+      "contracts.ts was not printed; durability rules are the task-stated contracts supplied as map context, not line-cited source.",
+      "No-audit handlers were semantic-screened only (audit probability <=0.07) and not line-read, so they stay outside scope and unverified: handlers/assets.ts, handlers/catalog.ts, handlers/health.ts, handlers/locale.ts, handlers/metrics.ts, handlers/preview.ts, handlers/search.ts, handlers/version.ts.",
+      "Second-pass early probability for preferences was 0.58; the failure-path finding is from the printed optional.ts and preferences.ts sources, not from that score alone."
+    ]
+  }
+}

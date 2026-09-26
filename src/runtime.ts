@@ -1,10 +1,11 @@
 import { fork, type ChildProcess } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { prepareCell } from "./cell-code.js";
 import type { Corpus } from "./corpus.js";
 import type { Jev } from "./jev.js";
 import { integer, text, type Ref, type Span, type Trace } from "./types.js";
 
-export interface CellResult { output: string; truncated: boolean; error?: string }
+export interface CellResult { output: string; truncated: boolean; budget?: { total: number; used: number; remaining: number; cellRemaining: number; rejectedChars: number }; error?: string }
 export class Runtime {
   private child: ChildProcess;
   private ready: Promise<void>;
@@ -14,10 +15,12 @@ export class Runtime {
   private rpcCount = 0;
   private jevCalls = 0;
   get calls() { return this.jevCalls; }
-  readonly metrics = { cells: 0, observationChars: 0 };
-  constructor(private corpus: Corpus, private jev?: Jev, private timeout = 120000, private trace: Trace = () => {}) {
+  readonly metrics = { cells: 0, observationChars: 0, chargedOutputChars: 0 };
+  constructor(private corpus: Corpus, private jev?: Jev, private timeout = 120000, private trace: Trace = () => {}, readonly outputBudget = 16000, readonly cellBudget = 6000) {
     integer(timeout, "cell timeout", 1, 600000);
-    this.child = fork(fileURLToPath(new URL("./cell-worker.js", import.meta.url)), jev ? ["--print-budget", "2500"] : ["--read-only"], {
+    integer(outputBudget, "output budget", 1, 1000000);
+    integer(cellBudget, "cell budget", 1, 1000000);
+    this.child = fork(fileURLToPath(new URL("./cell-worker.js", import.meta.url)), [...(jev ? [] : ["--read-only"]), "--output-budget", String(outputBudget), "--cell-budget", String(cellBudget)], {
       execArgv: [], stdio: ["ignore", "ignore", "ignore", "ipc"],
       // Keys stay in the host process, never in the generated-code environment.
       env: { PATH: process.env.PATH ?? "" },
@@ -31,12 +34,13 @@ export class Runtime {
         if (message.type === "rpc") void this.handleRpc(message);
         if (message.type === "result" && this.active) {
           clearTimeout(this.active.timer);
-          const result: CellResult = { output: message.output, truncated: message.truncated, ...(message.error ? { error: message.error } : {}) };
+          const result: CellResult = { output: message.output, truncated: message.truncated, budget: message.budget, ...(message.error ? { error: message.error } : {}) };
           this.metrics.observationChars += result.output.length;
+          this.metrics.chargedOutputChars = result.budget?.used ?? this.metrics.chargedOutputChars;
           this.trace({ type: "cell_result", ...result });
           this.active.resolve(result);
           this.active = undefined;
-          if (result.error?.startsWith("Unawaited tool calls")) this.close();
+          if (message.fatal) this.close();
         }
       });
       this.child.on("exit", () => {
@@ -68,6 +72,11 @@ export class Runtime {
           value = await this.jev.ask(args[0], args[1], this.controller.signal);
           this.jevCalls++;
           break;
+        case "jev.map":
+          if (!this.jev) throw new Error("Jev is disabled in the read baseline");
+          value = await this.jev.map(args[0], args[1], args[2], this.controller.signal);
+          this.jevCalls++;
+          break;
         case "jev.filter":
           if (!this.jev) throw new Error("Jev is disabled in the read baseline");
           value = await this.jev.filter(args[0] as Ref[], args[1], args[2], this.controller.signal);
@@ -91,7 +100,8 @@ export class Runtime {
     if (this.active) throw new Error("Wait for the previous cell before executing another");
     this.rpcCount = 0;
     this.metrics.cells++;
-    this.trace({ type: "cell", code });
+    const executedCode = prepareCell(code);
+    this.trace({ type: "cell", code, ...(executedCode !== code ? { executedCode } : {}) });
     return new Promise(resolve => {
       const timer = setTimeout(() => {
         const result = { output: "", truncated: false, error: "Cell timed out; session terminated and state discarded" };
@@ -101,7 +111,7 @@ export class Runtime {
         resolve(result);
       }, this.timeout);
       this.active = { resolve, timer };
-      this.child.send({ type: "eval", code });
+      this.child.send({ type: "eval", code: executedCode });
     });
   }
   close(): void {
